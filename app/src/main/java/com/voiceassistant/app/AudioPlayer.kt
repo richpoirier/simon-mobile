@@ -1,0 +1,86 @@
+package com.voiceassistant.app
+
+import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
+import android.util.Log
+import kotlinx.coroutines.*
+import java.util.concurrent.LinkedBlockingQueue
+
+class AudioPlayer(private val context: Context) {
+    companion object {
+        private const val TAG = "AudioPlayer"
+        private const val SAMPLE_RATE = 16000
+        private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_OUT_MONO
+        private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
+    }
+
+    private var audioTrack: AudioTrack? = null
+    private val audioQueue = LinkedBlockingQueue<ByteArray>()
+    private var isPlaying = false
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    init {
+        initAudioTrack()
+        startPlaybackLoop()
+    }
+
+    private fun initAudioTrack() {
+        val bufferSize = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
+        
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ASSISTANT)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build()
+
+        val audioFormat = AudioFormat.Builder()
+            .setSampleRate(SAMPLE_RATE)
+            .setChannelMask(CHANNEL_CONFIG)
+            .setEncoding(AUDIO_FORMAT)
+            .build()
+
+        audioTrack = AudioTrack.Builder()
+            .setAudioAttributes(audioAttributes)
+            .setAudioFormat(audioFormat)
+            .setBufferSizeInBytes(bufferSize * 2)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+
+        audioTrack?.play()
+        isPlaying = true
+    }
+
+    private fun startPlaybackLoop() {
+        scope.launch {
+            while (isPlaying) {
+                try {
+                    val audioData = audioQueue.take()
+                    audioTrack?.write(audioData, 0, audioData.size)
+                } catch (e: InterruptedException) {
+                    Log.d(TAG, "Playback loop interrupted")
+                    break
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in playback loop", e)
+                }
+            }
+        }
+    }
+
+    fun playAudio(audioData: ByteArray) {
+        try {
+            audioQueue.offer(audioData)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error queuing audio", e)
+        }
+    }
+
+    fun release() {
+        isPlaying = false
+        scope.cancel()
+        audioTrack?.stop()
+        audioTrack?.release()
+        audioTrack = null
+        audioQueue.clear()
+    }
+}
