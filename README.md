@@ -33,6 +33,10 @@ This Android app integrates with the OpenAI Realtime Voice API to create a digit
 
 3. **Build the app**:
    ```bash
+   ./build.sh
+   ```
+   Or if you have Java 11+ configured:
+   ```bash
    ./gradlew assembleDebug
    ```
 
