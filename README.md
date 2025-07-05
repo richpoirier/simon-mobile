@@ -12,18 +12,42 @@ This Android app integrates with the OpenAI Realtime Voice API to create a digit
 
 ## Setup
 
-1. **OpenAI API Key**: 
+### Prerequisites
+- Java 11 or higher
+- Android SDK (via Android Studio or command line tools)
+
+### Mac Setup
+1. **Run the setup script**:
+   ```bash
+   ./setup-mac.sh
+   ```
+   This will check dependencies and download the Gradle wrapper.
+
+2. **OpenAI API Key**: 
    - Get an API key from [OpenAI Platform](https://platform.openai.com)
    - Ensure you have access to the Realtime API (currently in beta)
-   - Copy `config.properties.example` to `config.properties`
-   - Add your API key to `config.properties`:
+   - Edit `config.properties` (created by setup script):
      ```properties
      openai_api_key=sk-your-actual-api-key-here
      ```
 
-2. **Build the app**:
+3. **Build the app**:
    ```bash
    ./gradlew assembleDebug
+   ```
+
+### Manual Setup (if setup script fails)
+1. Install Java 11+: https://adoptium.net/
+2. Install Android Studio: https://developer.android.com/studio
+3. Set ANDROID_HOME in your shell profile:
+   ```bash
+   echo 'export ANDROID_HOME=$HOME/Library/Android/sdk' >> ~/.zshrc
+   ```
+4. Download Gradle wrapper manually:
+   ```bash
+   mkdir -p gradle/wrapper
+   curl -L https://github.com/gradle/gradle/raw/v8.2.0/gradle/wrapper/gradle-wrapper.jar \
+        -o gradle/wrapper/gradle-wrapper.jar
    ```
 
 3. **Install and configure**:
