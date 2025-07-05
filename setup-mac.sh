@@ -44,6 +44,12 @@ if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
     echo "✓ Gradle wrapper downloaded"
 fi
 
+# Create local.properties with SDK location
+if [ ! -f "local.properties" ] && [ -n "$ANDROID_HOME" ]; then
+    echo "sdk.dir=$ANDROID_HOME" > local.properties
+    echo "✓ Created local.properties with SDK location"
+fi
+
 # Check if config.properties exists
 if [ ! -f "config.properties" ]; then
     echo "Creating config.properties from example..."

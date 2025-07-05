@@ -33,6 +33,16 @@ echo ""
 java -version
 echo ""
 
+# Check for Android SDK
+if [ ! -f "local.properties" ]; then
+    echo "Setting up Android SDK location..."
+    ./find-android-sdk.sh
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+    echo ""
+fi
+
 # Check for config.properties
 if [ ! -f "config.properties" ]; then
     echo "Creating config.properties from example..."
