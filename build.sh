@@ -1,46 +1,35 @@
 #!/bin/bash
 
-# Build script that ensures Java 11+ is used
-
-echo "Android Voice Assistant Build Script"
-echo "===================================="
+echo "Android Voice Assistant Build Script (Linux)"
+echo "============================================"
 echo ""
 
-# Check if Java 11+ is available
-if command -v /usr/libexec/java_home &> /dev/null; then
-    # On macOS, use java_home to find Java 11+
-    JAVA_11_HOME=$(/usr/libexec/java_home -v 11+ 2>/dev/null)
-    if [ -n "$JAVA_11_HOME" ]; then
-        export JAVA_HOME="$JAVA_11_HOME"
-        echo "✓ Using Java from: $JAVA_HOME"
-    else
-        echo "❌ Java 11 or higher not found!"
-        echo "   Please install from: https://adoptium.net/"
-        exit 1
-    fi
-else
-    # On other systems, check Java version
-    JAVA_VERSION=$(java -version 2>&1 | head -n 1 | cut -d'"' -f2 | cut -d'.' -f1)
-    if [ "$JAVA_VERSION" -lt 11 ]; then
-        echo "❌ Java $JAVA_VERSION found, but Java 11+ is required!"
-        echo "   Current JAVA_HOME: $JAVA_HOME"
-        echo "   Please install Java 11+ from: https://adoptium.net/"
-        exit 1
-    fi
+# Check Java
+if ! command -v java &> /dev/null; then
+    echo "❌ Java is not installed!"
+    echo "   Run: sudo apt install openjdk-17-jdk"
+    exit 1
 fi
 
-echo ""
-java -version
+JAVA_VERSION=$(java -version 2>&1 | head -n 1 | cut -d'"' -f2 | cut -d'.' -f1)
+if [ "$JAVA_VERSION" -lt 11 ]; then
+    echo "❌ Java $JAVA_VERSION found, but Java 11+ is required!"
+    echo "   Run: sudo apt install openjdk-17-jdk"
+    exit 1
+fi
+
+echo "✓ Using Java $JAVA_VERSION"
 echo ""
 
-# Check for Android SDK
+# Check for local.properties
 if [ ! -f "local.properties" ]; then
-    echo "Setting up Android SDK location..."
-    ./find-android-sdk.sh
-    if [ $? -ne 0 ]; then
+    if [ -z "$ANDROID_HOME" ]; then
+        echo "❌ ANDROID_HOME not set and local.properties missing!"
+        echo "   Run: ./setup-linux.sh"
         exit 1
     fi
-    echo ""
+    echo "sdk.dir=$ANDROID_HOME" > local.properties
+    echo "✓ Created local.properties"
 fi
 
 # Check for config.properties
