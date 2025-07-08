@@ -55,7 +55,7 @@ class OpenAIRealtimeClient(
 
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
                 // Handle binary audio data if needed
-                Log.d(TAG, "Received binary message: ${bytes.size()} bytes")
+                Log.d(TAG, "Received binary message: ${bytes.size} bytes")
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
