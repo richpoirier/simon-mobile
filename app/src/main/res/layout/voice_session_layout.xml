@@ -1,33 +1,86 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/black"
-    android:padding="24dp">
+    android:background="@drawable/gradient_background"
+    android:fitsSystemWindows="false">
 
-    <LinearLayout
-        android:layout_width="match_parent"
+    <!-- Animated background circles -->
+    <View
+        android:id="@+id/circle_outer"
+        android:layout_width="300dp"
+        android:layout_height="300dp"
+        android:background="@drawable/circle_ripple"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.4" />
+
+    <View
+        android:id="@+id/circle_middle"
+        android:layout_width="200dp"
+        android:layout_height="200dp"
+        android:background="@drawable/circle_ripple"
+        app:layout_constraintBottom_toBottomOf="@id/circle_outer"
+        app:layout_constraintEnd_toEndOf="@id/circle_outer"
+        app:layout_constraintStart_toStartOf="@id/circle_outer"
+        app:layout_constraintTop_toTopOf="@id/circle_outer" />
+
+    <View
+        android:id="@+id/circle_inner"
+        android:layout_width="120dp"
+        android:layout_height="120dp"
+        android:background="@drawable/circle_solid"
+        app:layout_constraintBottom_toBottomOf="@id/circle_middle"
+        app:layout_constraintEnd_toEndOf="@id/circle_middle"
+        app:layout_constraintStart_toStartOf="@id/circle_middle"
+        app:layout_constraintTop_toTopOf="@id/circle_middle" />
+
+    <!-- Simon logo/icon -->
+    <ImageView
+        android:id="@+id/simon_logo"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:src="@drawable/ic_simon"
+        android:tint="@color/white"
+        app:layout_constraintBottom_toBottomOf="@id/circle_inner"
+        app:layout_constraintEnd_toEndOf="@id/circle_inner"
+        app:layout_constraintStart_toStartOf="@id/circle_inner"
+        app:layout_constraintTop_toTopOf="@id/circle_inner" />
+
+    <!-- Status text -->
+    <TextView
+        android:id="@+id/status_text"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:orientation="vertical"
-        android:gravity="center">
+        android:layout_marginTop="48dp"
+        android:fontFamily="sans-serif-medium"
+        android:text="Listening..."
+        android:textColor="@color/white"
+        android:textSize="28sp"
+        android:textAlignment="center"
+        android:alpha="0.9"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/circle_outer" />
 
-        <ImageView
-            android:layout_width="120dp"
-            android:layout_height="120dp"
-            android:src="@android:drawable/ic_btn_speak_now"
-            android:tint="@android:color/white"
-            android:layout_marginBottom="24dp" />
+    <!-- Hint text -->
+    <TextView
+        android:id="@+id/hint_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:layout_marginHorizontal="32dp"
+        android:fontFamily="sans-serif"
+        android:text="Say &quot;Hey Simon&quot; or tap to speak"
+        android:textColor="@color/white"
+        android:textSize="16sp"
+        android:textAlignment="center"
+        android:alpha="0.6"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/status_text" />
 
-        <TextView
-            android:id="@+id/status_text"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Listening..."
-            android:textColor="@android:color/white"
-            android:textSize="24sp"
-            android:textAlignment="center" />
-
-    </LinearLayout>
-
-</FrameLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -10,8 +10,10 @@ import android.service.voice.VoiceInteractionSession
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
-import android.view.WindowManager
 import android.widget.TextView
+import android.animation.ObjectAnimator
+import android.animation.AnimatorSet
+import android.view.animation.LinearInterpolator
 import kotlinx.coroutines.*
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -32,6 +34,11 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
     private var isSpeaking = false
     private var scope: CoroutineScope? = null
     private lateinit var statusText: TextView
+    private lateinit var hintText: TextView
+    private lateinit var circleOuter: View
+    private lateinit var circleMiddle: View
+    private lateinit var circleInner: View
+    private var pulseAnimator: AnimatorSet? = null
     private var audioPlayer: AudioPlayer? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -39,10 +46,17 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
         val inflater = LayoutInflater.from(context)
         val view = inflater.inflate(R.layout.voice_session_layout, null)
         statusText = view.findViewById(R.id.status_text)
+        hintText = view.findViewById(R.id.hint_text)
+        circleOuter = view.findViewById(R.id.circle_outer)
+        circleMiddle = view.findViewById(R.id.circle_middle)
+        circleInner = view.findViewById(R.id.circle_inner)
         
         // Set UI to show on lockscreen
         setUiEnabled(true)
         setKeepAwake(true)
+        
+        // Apply theme and make fullscreen
+        context.setTheme(R.style.Theme_VoiceSession)
         
         return view
     }
@@ -96,6 +110,9 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
         audioPlayer = AudioPlayer(context)
         openAIClient = OpenAIRealtimeClient(apiKey, this)
         openAIClient?.connect()
+        
+        // Start pulse animation
+        startPulseAnimation()
     }
 
     override fun onHandleAssist(state: AssistState) {
@@ -178,6 +195,26 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
     private fun updateStatus(status: String) {
         scope?.launch(Dispatchers.Main) {
             statusText.text = status
+            
+            // Update hint text based on status
+            when {
+                status.contains("Listening", ignoreCase = true) -> {
+                    hintText.text = "Speak now..."
+                    hintText.alpha = 0.8f
+                }
+                status.contains("Processing", ignoreCase = true) -> {
+                    hintText.text = "Thinking..."
+                    hintText.alpha = 0.6f
+                }
+                status.contains("Response", ignoreCase = true) -> {
+                    hintText.text = ""
+                    hintText.alpha = 0f
+                }
+                else -> {
+                    hintText.text = "Say \"Hey Simon\" or tap to speak"
+                    hintText.alpha = 0.6f
+                }
+            }
         }
     }
 
@@ -244,8 +281,8 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
             i += 2
         }
         
-        // Threshold: ~1% of max 16-bit value (32767) - very low threshold for noise gate
-        val threshold = 300
+        // Threshold: ~0.3% of max 16-bit value (32767) - very low threshold for noise gate
+        val threshold = 100
         
         return if (maxAmplitude > threshold) {
             // Audio is above threshold, return it as-is
@@ -286,8 +323,42 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
         isSpeaking = false
     }
     
+    private fun startPulseAnimation() {
+        scope?.launch(Dispatchers.Main) {
+            // Create pulse animations for each circle
+            val outerScaleX = ObjectAnimator.ofFloat(circleOuter, "scaleX", 1f, 1.1f)
+            val outerScaleY = ObjectAnimator.ofFloat(circleOuter, "scaleY", 1f, 1.1f)
+            val outerAlpha = ObjectAnimator.ofFloat(circleOuter, "alpha", 0.3f, 0.1f)
+            
+            val middleScaleX = ObjectAnimator.ofFloat(circleMiddle, "scaleX", 1f, 1.2f)
+            val middleScaleY = ObjectAnimator.ofFloat(circleMiddle, "scaleY", 1f, 1.2f)
+            val middleAlpha = ObjectAnimator.ofFloat(circleMiddle, "alpha", 0.5f, 0.2f)
+            
+            pulseAnimator = AnimatorSet().apply {
+                playTogether(outerScaleX, outerScaleY, outerAlpha, middleScaleX, middleScaleY, middleAlpha)
+                duration = 2000
+                interpolator = LinearInterpolator()
+                // Loop the animation
+                addListener(object : android.animation.AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: android.animation.Animator) {
+                        if (isRecording) {
+                            start()
+                        }
+                    }
+                })
+                start()
+            }
+        }
+    }
+    
+    private fun stopPulseAnimation() {
+        pulseAnimator?.cancel()
+        pulseAnimator = null
+    }
+    
     override fun onHide() {
         super.onHide()
+        stopPulseAnimation()
         cleanupPreviousSession()
     }
 }

@@ -84,9 +84,9 @@ class OpenAIRealtimeClient(
                 addProperty("output_audio_format", "pcm16")
                 add("turn_detection", JsonObject().apply {
                     addProperty("type", "server_vad")
-                    addProperty("threshold", 0.7) // Higher threshold to reduce false triggers
+                    addProperty("threshold", 0.5) // Balanced threshold for responsiveness
                     addProperty("prefix_padding_ms", 300)
-                    addProperty("silence_duration_ms", 800) // Longer silence required
+                    addProperty("silence_duration_ms", 500) // Faster turn detection
                 })
             })
         }
