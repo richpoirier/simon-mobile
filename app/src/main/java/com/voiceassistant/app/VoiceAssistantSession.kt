@@ -128,8 +128,8 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
         }
 
         val minBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-        // Use at least 4x the minimum buffer size to prevent underruns
-        val bufferSize = maxOf(minBufferSize * 4, 8192)
+        // Use 2x the minimum buffer size for lower latency
+        val bufferSize = minBufferSize * 2
         Log.d(TAG, "Audio buffer size: $bufferSize (min was $minBufferSize)")
         
         if (context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -254,6 +254,7 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
 
     override fun onInterruption() {
         Log.d(TAG, "Interruption detected - clearing audio queue")
+        isSpeaking = false  // Resume audio input immediately
         audioPlayer?.clearQueue()
         openAIClient?.cancelResponse()
     }

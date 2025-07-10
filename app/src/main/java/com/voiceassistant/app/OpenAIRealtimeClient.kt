@@ -84,9 +84,9 @@ class OpenAIRealtimeClient(
                 addProperty("output_audio_format", "pcm16")
                 add("turn_detection", JsonObject().apply {
                     addProperty("type", "server_vad")
-                    addProperty("threshold", 0.8) // Higher threshold to reduce false positives
-                    addProperty("prefix_padding_ms", 500) // Require more speech before triggering
-                    addProperty("silence_duration_ms", 1000) // Longer silence to avoid cutting off
+                    addProperty("threshold", 0.5) // Default OpenAI threshold
+                    addProperty("prefix_padding_ms", 300) // Default padding
+                    addProperty("silence_duration_ms", 500) // Default silence duration
                 })
             })
         }
@@ -186,7 +186,7 @@ class OpenAIRealtimeClient(
                 "response.cancelled" -> {
                     isResponseActive = false
                     Log.d(TAG, "Response cancelled")
-                    listener.onInterruption()
+                    // Don't call onInterruption here - it's already been called
                 }
                 "response.cancel_failed" -> {
                     val error = event.getAsJsonObject("error")
