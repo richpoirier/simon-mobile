@@ -140,7 +140,7 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
 
         try {
             audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION, // Better echo cancellation
+                MediaRecorder.AudioSource.VOICE_RECOGNITION, // Optimized for voice assistants
                 SAMPLE_RATE,
                 CHANNEL_CONFIG,
                 AUDIO_FORMAT,
@@ -164,12 +164,12 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
                 while (isRecording) {
                     val readSize = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                     if (readSize > 0) {
-                        // Only send audio when assistant is not speaking AND audio is above threshold
-                        if (!isSpeaking && isAudioAboveThreshold(buffer, readSize)) {
-                            totalBytesRead += readSize
+                        totalBytesRead += readSize
+                        // Always send audio to maintain continuous stream
+                        // OpenAI needs continuous audio for proper VAD operation
+                        if (!isSpeaking) {
                             openAIClient?.sendAudioInput(buffer.copyOf(readSize))
                         }
-                        // Don't send anything if below threshold or if assistant is speaking
                     } else if (readSize < 0) {
                         Log.e(TAG, "AudioRecord read error: $readSize")
                     }
@@ -223,7 +223,10 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
     }
 
     override fun onAudioResponse(audioData: ByteArray) {
-        isSpeaking = true
+        if (!isSpeaking) {
+            isSpeaking = true
+            Log.d(TAG, "Assistant started speaking - pausing audio input")
+        }
         audioPlayer?.playAudio(audioData)
     }
 
@@ -256,13 +259,8 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
     }
 
     override fun onAudioComplete() {
-        Log.d(TAG, "Audio playback complete")
+        Log.d(TAG, "Audio playback complete - resuming audio input")
         isSpeaking = false
-        // Add a small delay before resuming listening
-        scope?.launch {
-            delay(500)
-            isSpeaking = false
-        }
     }
 
     private fun isAudioAboveThreshold(buffer: ByteArray, size: Int): Boolean {
