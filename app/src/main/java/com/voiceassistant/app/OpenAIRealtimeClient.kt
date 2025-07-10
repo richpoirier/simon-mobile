@@ -26,7 +26,7 @@ class OpenAIRealtimeClient(
         .build()
     
     private val gson = Gson()
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var scope: CoroutineScope? = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     interface RealtimeEventListener {
         fun onConnected()
@@ -208,6 +208,7 @@ class OpenAIRealtimeClient(
     fun disconnect() {
         webSocket?.close(1000, "Client disconnect")
         webSocket = null
-        scope.cancel()
+        scope?.cancel()
+        scope = null
     }
 }

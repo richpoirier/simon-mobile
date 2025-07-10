@@ -30,7 +30,7 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
     private var audioRecord: AudioRecord? = null
     private var isRecording = false
     private var isSpeaking = false
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var scope: CoroutineScope? = null
     private lateinit var statusText: TextView
     private var audioPlayer: AudioPlayer? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -50,6 +50,12 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
     override fun onShow(args: Bundle?, showFlags: Int) {
         super.onShow(args, showFlags)
         Log.d(TAG, "onShow called with args: $args, showFlags: $showFlags")
+        
+        // Clean up any previous session state
+        cleanupPreviousSession()
+        
+        // Create a new coroutine scope for this session
+        scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         
         // Keep screen on when launched from lockscreen
         if ((showFlags and SHOW_WITH_SCREENSHOT) != 0) {
@@ -133,7 +139,7 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
             updateStatus("Listening...")
             Log.d(TAG, "Started recording")
 
-            scope.launch {
+            scope?.launch {
                 val buffer = ByteArray(bufferSize)
                 var totalBytesRead = 0
                 while (isRecording) {
@@ -170,7 +176,7 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
     }
 
     private fun updateStatus(status: String) {
-        scope.launch(Dispatchers.Main) {
+        scope?.launch(Dispatchers.Main) {
             statusText.text = status
         }
     }
@@ -197,7 +203,7 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
             !error.contains("response_not_found", ignoreCase = true)) {
             updateStatus("Error: $error")
             // Try to recover by resetting the listening state
-            scope.launch {
+            scope?.launch {
                 delay(1000)
                 updateStatus("Ready - try speaking again")
             }
@@ -218,7 +224,7 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
         Log.d(TAG, "Audio playback complete")
         isSpeaking = false
         // Add a small delay before resuming listening
-        scope.launch {
+        scope?.launch {
             delay(500)
             isSpeaking = false
         }
@@ -238,8 +244,8 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
             i += 2
         }
         
-        // Threshold: ~3% of max 16-bit value (32767) - lower threshold for noise gate
-        val threshold = 1000
+        // Threshold: ~1% of max 16-bit value (32767) - very low threshold for noise gate
+        val threshold = 300
         
         return if (maxAmplitude > threshold) {
             // Audio is above threshold, return it as-is
@@ -250,20 +256,38 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
         }
     }
 
-    override fun onHide() {
-        super.onHide()
+    private fun cleanupPreviousSession() {
+        Log.d(TAG, "Cleaning up previous session")
+        
+        // Stop any ongoing recording
         stopListening()
+        
+        // Disconnect OpenAI client
         openAIClient?.disconnect()
+        openAIClient = null
+        
+        // Release audio player
         audioPlayer?.release()
-        scope.cancel()
+        audioPlayer = null
+        
+        // Cancel any ongoing coroutines
+        scope?.cancel()
         
         // Release wake lock
         wakeLock?.let {
             if (it.isHeld) {
                 it.release()
-                Log.d(TAG, "Wake lock released")
+                Log.d(TAG, "Wake lock released in cleanup")
             }
         }
         wakeLock = null
+        
+        // Reset speaking state
+        isSpeaking = false
+    }
+    
+    override fun onHide() {
+        super.onHide()
+        cleanupPreviousSession()
     }
 }

@@ -20,7 +20,7 @@ class AudioPlayer(private val context: Context) {
     private var audioTrack: AudioTrack? = null
     private val audioQueue = LinkedBlockingQueue<ByteArray>()
     private var isPlaying = false
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var scope: CoroutineScope? = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     init {
         initAudioTrack()
@@ -55,7 +55,7 @@ class AudioPlayer(private val context: Context) {
     }
 
     private fun startPlaybackLoop() {
-        scope.launch {
+        scope?.launch {
             while (isPlaying) {
                 try {
                     val audioData = audioQueue.take()
@@ -89,7 +89,8 @@ class AudioPlayer(private val context: Context) {
 
     fun release() {
         isPlaying = false
-        scope.cancel()
+        scope?.cancel()
+        scope = null
         audioTrack?.stop()
         audioTrack?.release()
         audioTrack = null
