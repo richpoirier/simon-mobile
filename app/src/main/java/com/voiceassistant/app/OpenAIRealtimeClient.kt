@@ -84,9 +84,9 @@ class OpenAIRealtimeClient(
                 addProperty("output_audio_format", "pcm16")
                 add("turn_detection", JsonObject().apply {
                     addProperty("type", "server_vad")
-                    addProperty("threshold", 0.7) // Higher threshold to reduce false triggers
+                    addProperty("threshold", 0.5) // Default threshold
                     addProperty("prefix_padding_ms", 300)
-                    addProperty("silence_duration_ms", 800) // Longer silence required
+                    addProperty("silence_duration_ms", 500) // Default silence duration
                 })
             })
         }
@@ -173,8 +173,15 @@ class OpenAIRealtimeClient(
                     listener.onTextResponse(text)
                 }
                 "input_audio_buffer.speech_started" -> {
-                    Log.d(TAG, "User started speaking - interrupting")
-                    listener.onInterruption()
+                    Log.d(TAG, "OpenAI detected speech_started")
+                    // Only interrupt if there's an active response
+                    if (isResponseActive) {
+                        Log.d(TAG, "Interrupting current response")
+                        listener.onInterruption()
+                    }
+                }
+                "input_audio_buffer.speech_stopped" -> {
+                    Log.d(TAG, "OpenAI detected speech_stopped")
                 }
                 "response.cancelled" -> {
                     isResponseActive = false

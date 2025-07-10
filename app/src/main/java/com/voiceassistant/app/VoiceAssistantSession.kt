@@ -127,8 +127,10 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
             return
         }
 
-        val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-        Log.d(TAG, "Audio buffer size: $bufferSize")
+        val minBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
+        // Use at least 4x the minimum buffer size to prevent underruns
+        val bufferSize = maxOf(minBufferSize * 4, 8192)
+        Log.d(TAG, "Audio buffer size: $bufferSize (min was $minBufferSize)")
         
         if (context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             Log.e(TAG, "No audio recording permission")
@@ -142,7 +144,7 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
                 SAMPLE_RATE,
                 CHANNEL_CONFIG,
                 AUDIO_FORMAT,
-                bufferSize * 2
+                bufferSize
             )
 
             if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
@@ -162,16 +164,12 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
                 while (isRecording) {
                     val readSize = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                     if (readSize > 0) {
-                        // Apply noise gate: zero out audio below threshold to prevent phantom sounds
-                        val processedBuffer = if (!isSpeaking) {
-                            applyNoiseGate(buffer, readSize)
-                        } else {
-                            // If assistant is speaking, send silence to avoid feedback
-                            ByteArray(readSize)
+                        // Only send audio when assistant is not speaking AND audio is above threshold
+                        if (!isSpeaking && isAudioAboveThreshold(buffer, readSize)) {
+                            totalBytesRead += readSize
+                            openAIClient?.sendAudioInput(buffer.copyOf(readSize))
                         }
-                        
-                        totalBytesRead += readSize
-                        openAIClient?.sendAudioInput(processedBuffer)
+                        // Don't send anything if below threshold or if assistant is speaking
                     } else if (readSize < 0) {
                         Log.e(TAG, "AudioRecord read error: $readSize")
                     }
@@ -267,7 +265,7 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
         }
     }
 
-    private fun applyNoiseGate(buffer: ByteArray, size: Int): ByteArray {
+    private fun isAudioAboveThreshold(buffer: ByteArray, size: Int): Boolean {
         // Check if audio is above threshold
         var maxAmplitude = 0
         var i = 0
@@ -281,16 +279,9 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
             i += 2
         }
         
-        // Threshold: ~1% of max 16-bit value (32767) - very low threshold for noise gate
-        val threshold = 300
-        
-        return if (maxAmplitude > threshold) {
-            // Audio is above threshold, return it as-is
-            buffer.copyOf(size)
-        } else {
-            // Audio is below threshold, return silence
-            ByteArray(size)
-        }
+        // Use a reasonable threshold
+        val threshold = 500
+        return maxAmplitude > threshold
     }
 
     private fun cleanupPreviousSession() {
