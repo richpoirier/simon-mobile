@@ -6,6 +6,13 @@ plugins {
 android {
     namespace 'com.voiceassistant.app'
     compileSdk 34
+    
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+            returnDefaultValues = true
+        }
+    }
 
     defaultConfig {
         applicationId "com.voiceassistant.app"

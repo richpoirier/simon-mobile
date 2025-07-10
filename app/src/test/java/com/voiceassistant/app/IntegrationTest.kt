@@ -8,6 +8,7 @@ import android.service.voice.VoiceInteractionSession
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import io.mockk.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
 import okhttp3.*
@@ -98,7 +99,7 @@ class IntegrationTest {
         webSocketListener.onMessage(mockWebSocket, gson.toJson(speechStarted))
         
         // Verify interruption handling
-        verify { mockWebSocket.send(match { it.contains("response.cancel") }) }
+        verify { mockWebSocket.send(match<String> { it.contains("response.cancel") }) }
         
         // Simulate response cancelled
         val responseCancelled = JsonObject().apply {
@@ -110,7 +111,7 @@ class IntegrationTest {
         
         // Verify system is ready for new input
         // Audio should continue to be sent for new interaction
-        verify(atLeast = 1) { mockWebSocket.send(match { it.contains("input_audio_buffer.append") }) }
+        verify(atLeast = 1) { mockWebSocket.send(match<String> { it.contains("input_audio_buffer.append") }) }
     }
     
     @Test
@@ -125,7 +126,7 @@ class IntegrationTest {
         webSocketListener.onOpen(mockWebSocket, mockk())
         
         // Start audio handling
-        session.onHandleAssist(VoiceInteractionSession.AssistState())
+        session.onHandleAssist(mockk<VoiceInteractionSession.AssistState>())
         testDispatcher.scheduler.advanceUntilIdle()
         
         // Simulate audio routing failure (like Bluetooth disconnect)
@@ -146,11 +147,11 @@ class IntegrationTest {
         webSocketListener.onOpen(mockWebSocket, mockk())
         
         // Verify session is functional again
-        session.onHandleAssist(VoiceInteractionSession.AssistState())
+        session.onHandleAssist(mockk<VoiceInteractionSession.AssistState>())
         testDispatcher.scheduler.advanceUntilIdle()
         
         // Should be sending audio again
-        verify(atLeast = 1) { mockWebSocket.send(match { it.contains("input_audio_buffer.append") }) }
+        verify(atLeast = 1) { mockWebSocket.send(match<String> { it.contains("input_audio_buffer.append") }) }
     }
     
     @Test
@@ -163,7 +164,7 @@ class IntegrationTest {
         webSocketListener.onOpen(mockWebSocket, mockk())
         
         // Start listening
-        session.onHandleAssist(VoiceInteractionSession.AssistState())
+        session.onHandleAssist(mockk<VoiceInteractionSession.AssistState>())
         testDispatcher.scheduler.advanceUntilIdle()
         
         // Clear initial audio sends
@@ -186,7 +187,7 @@ class IntegrationTest {
         testDispatcher.scheduler.runCurrent()
         
         // Verify audio is still being sent during playback
-        verify(atLeast = 1) { mockWebSocket.send(match { it.contains("input_audio_buffer.append") }) }
+        verify(atLeast = 1) { mockWebSocket.send(match<String> { it.contains("input_audio_buffer.append") }) }
     }
     
     @Test
@@ -218,11 +219,11 @@ class IntegrationTest {
         }
         
         // Session should remain functional
-        session.onHandleAssist(VoiceInteractionSession.AssistState())
+        session.onHandleAssist(mockk<VoiceInteractionSession.AssistState>())
         testDispatcher.scheduler.advanceUntilIdle()
         
         // Should still be sending audio
-        verify(atLeast = 1) { mockWebSocket.send(match { it.contains("input_audio_buffer.append") }) }
+        verify(atLeast = 1) { mockWebSocket.send(match<String> { it.contains("input_audio_buffer.append") }) }
     }
     
     @Test
@@ -245,7 +246,7 @@ class IntegrationTest {
         
         // Session should function normally
         webSocketListener.onOpen(mockWebSocket, mockk())
-        session.onHandleAssist(VoiceInteractionSession.AssistState())
+        session.onHandleAssist(mockk<VoiceInteractionSession.AssistState>())
         testDispatcher.scheduler.advanceUntilIdle()
         
         // Hide session

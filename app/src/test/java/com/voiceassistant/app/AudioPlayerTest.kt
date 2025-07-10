@@ -5,6 +5,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import io.mockk.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
 import org.junit.After
@@ -63,9 +64,9 @@ class AudioPlayerTest {
         
         // Verify all chunks were written in order
         verifyOrder {
-            mockAudioTrack.write(chunk1, 0, chunk1.size)
-            mockAudioTrack.write(chunk2, 0, chunk2.size)
-            mockAudioTrack.write(chunk3, 0, chunk3.size)
+            mockAudioTrack.write(eq(chunk1), eq(0), eq(chunk1.size))
+            mockAudioTrack.write(eq(chunk2), eq(0), eq(chunk2.size))
+            mockAudioTrack.write(eq(chunk3), eq(0), eq(chunk3.size))
         }
     }
     
@@ -83,7 +84,7 @@ class AudioPlayerTest {
         testDispatcher.scheduler.advanceUntilIdle()
         
         // Should have minimal writes (maybe 1 if it started processing)
-        verify(atMost = 1) { mockAudioTrack.write(any(), any(), any()) }
+        verify(atMost = 1) { mockAudioTrack.write(any<ByteArray>(), any(), any()) }
     }
     
     @Test
@@ -134,7 +135,7 @@ class AudioPlayerTest {
         testDispatcher.scheduler.advanceUntilIdle()
         
         // All chunks should be processed without issues
-        verify(exactly = 100) { mockAudioTrack.write(any(), any(), any()) }
+        verify(exactly = 100) { mockAudioTrack.write(any<ByteArray>(), any(), any()) }
     }
     
     @Test
@@ -151,6 +152,6 @@ class AudioPlayerTest {
         testDispatcher.scheduler.advanceUntilIdle()
         
         // Audio should be written promptly
-        verify { mockAudioTrack.write(audioData, 0, audioData.size) }
+        verify { mockAudioTrack.write(eq(audioData), eq(0), eq(audioData.size)) }
     }
 }

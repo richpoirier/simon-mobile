@@ -1,0 +1,2 @@
+com.voiceassistant.app.SimpleVoiceAssistantTest
+com.voiceassistant.app.OpenAIProtocolTest
