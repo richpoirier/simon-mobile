@@ -1,7 +1,6 @@
 package com.voiceassistant.app
 
 import android.service.voice.VoiceInteractionService
-import android.service.voice.VoiceInteractionSession
 import android.util.Log
 
 class VoiceAssistantService : VoiceInteractionService() {

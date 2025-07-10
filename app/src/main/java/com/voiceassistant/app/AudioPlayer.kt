@@ -11,7 +11,8 @@ import java.util.concurrent.LinkedBlockingQueue
 class AudioPlayer(private val context: Context) {
     companion object {
         private const val TAG = "AudioPlayer"
-        private const val SAMPLE_RATE = 16000
+        // OpenAI sends 24kHz audio for voice responses
+        private const val SAMPLE_RATE = 24000
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_OUT_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     }
@@ -28,6 +29,7 @@ class AudioPlayer(private val context: Context) {
 
     private fun initAudioTrack() {
         val bufferSize = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
+        Log.d(TAG, "AudioTrack buffer size: $bufferSize for sample rate: $SAMPLE_RATE")
         
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_ASSISTANT)
@@ -49,6 +51,7 @@ class AudioPlayer(private val context: Context) {
 
         audioTrack?.play()
         isPlaying = true
+        Log.d(TAG, "AudioTrack initialized and playing")
     }
 
     private fun startPlaybackLoop() {
@@ -70,9 +73,18 @@ class AudioPlayer(private val context: Context) {
     fun playAudio(audioData: ByteArray) {
         try {
             audioQueue.offer(audioData)
+            Log.d(TAG, "Queued ${audioData.size} bytes of audio, queue size: ${audioQueue.size}")
         } catch (e: Exception) {
             Log.e(TAG, "Error queuing audio", e)
         }
+    }
+
+    fun clearQueue() {
+        Log.d(TAG, "Clearing audio queue, had ${audioQueue.size} items")
+        audioQueue.clear()
+        audioTrack?.pause()
+        audioTrack?.flush()
+        audioTrack?.play()
     }
 
     fun release() {

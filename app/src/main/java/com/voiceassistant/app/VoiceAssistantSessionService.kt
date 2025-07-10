@@ -10,8 +10,20 @@ class VoiceAssistantSessionService : VoiceInteractionSessionService() {
         private const val TAG = "VoiceAssistantSessionService"
     }
 
+    override fun onCreate() {
+        super.onCreate()
+        Log.d(TAG, "VoiceAssistantSessionService onCreate")
+    }
+
     override fun onNewSession(args: Bundle?): VoiceInteractionSession {
-        Log.d(TAG, "Creating new voice interaction session")
-        return VoiceAssistantSession(this)
+        Log.d(TAG, "onNewSession called with args: $args")
+        val session = VoiceAssistantSession(this)
+        Log.d(TAG, "Created VoiceAssistantSession instance")
+        return session
+    }
+
+    override fun onDestroy() {
+        Log.d(TAG, "VoiceAssistantSessionService onDestroy")
+        super.onDestroy()
     }
 }

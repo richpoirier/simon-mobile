@@ -18,6 +18,7 @@ class OpenAIRealtimeClient(
     }
 
     private var webSocket: WebSocket? = null
+    private var isResponseActive = false
     private val client = OkHttpClient.Builder()
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
@@ -33,6 +34,8 @@ class OpenAIRealtimeClient(
         fun onTextResponse(text: String)
         fun onError(error: String)
         fun onDisconnected()
+        fun onInterruption()
+        fun onAudioComplete()
     }
 
     fun connect() {
@@ -77,21 +80,13 @@ class OpenAIRealtimeClient(
                 add("modalities", gson.toJsonTree(listOf("text", "audio")))
                 addProperty("instructions", "You are a helpful AI assistant. Be concise and friendly.")
                 addProperty("voice", "alloy")
-                add("input_audio_format", JsonObject().apply {
-                    addProperty("type", "pcm16")
-                    addProperty("sample_rate", 16000)
-                    addProperty("channels", 1)
-                })
-                add("output_audio_format", JsonObject().apply {
-                    addProperty("type", "pcm16")
-                    addProperty("sample_rate", 16000)
-                    addProperty("channels", 1)
-                })
+                addProperty("input_audio_format", "pcm16")
+                addProperty("output_audio_format", "pcm16")
                 add("turn_detection", JsonObject().apply {
                     addProperty("type", "server_vad")
-                    addProperty("threshold", 0.5)
+                    addProperty("threshold", 0.7) // Higher threshold to reduce false triggers
                     addProperty("prefix_padding_ms", 300)
-                    addProperty("silence_duration_ms", 500)
+                    addProperty("silence_duration_ms", 800) // Longer silence required
                 })
             })
         }
@@ -129,6 +124,18 @@ class OpenAIRealtimeClient(
         sendEvent(responseCreate)
     }
 
+    fun cancelResponse() {
+        if (isResponseActive) {
+            val cancel = JsonObject().apply {
+                addProperty("type", "response.cancel")
+            }
+            sendEvent(cancel)
+            Log.d(TAG, "Sent response.cancel")
+        } else {
+            Log.d(TAG, "No active response to cancel")
+        }
+    }
+
     private fun sendEvent(event: JsonObject) {
         val json = gson.toJson(event)
         Log.d(TAG, "Sending event: $json")
@@ -143,6 +150,19 @@ class OpenAIRealtimeClient(
             Log.d(TAG, "Received event: $type")
             
             when (type) {
+                "response.created" -> {
+                    isResponseActive = true
+                    Log.d(TAG, "Response started")
+                }
+                "response.done" -> {
+                    isResponseActive = false
+                    Log.d(TAG, "Response completed")
+                }
+                "response.audio.done" -> {
+                    Log.d(TAG, "Audio response done")
+                    // Notify that audio is complete
+                    listener.onAudioComplete()
+                }
                 "response.audio.delta" -> {
                     val delta = event.get("delta")?.asString ?: return
                     val audioData = android.util.Base64.decode(delta, android.util.Base64.NO_WRAP)
@@ -152,10 +172,32 @@ class OpenAIRealtimeClient(
                     val text = event.get("text")?.asString ?: return
                     listener.onTextResponse(text)
                 }
+                "input_audio_buffer.speech_started" -> {
+                    Log.d(TAG, "User started speaking - interrupting")
+                    listener.onInterruption()
+                }
+                "response.cancelled" -> {
+                    isResponseActive = false
+                    Log.d(TAG, "Response cancelled")
+                    listener.onInterruption()
+                }
+                "response.cancel_failed" -> {
+                    val error = event.getAsJsonObject("error")
+                    val code = error?.get("code")?.asString
+                    Log.w(TAG, "Cancel failed: $code - likely no active response")
+                    // Don't treat this as a fatal error
+                }
                 "error" -> {
                     val error = event.getAsJsonObject("error")
+                    val code = error?.get("code")?.asString
                     val message = error?.get("message")?.asString ?: "Unknown error"
-                    listener.onError(message)
+                    
+                    // Don't show cancellation errors to the user
+                    if (code == "response_not_found" || message.contains("cancel", ignoreCase = true)) {
+                        Log.d(TAG, "Ignoring cancellation error: $message")
+                    } else {
+                        listener.onError(message)
+                    }
                 }
             }
         } catch (e: Exception) {
