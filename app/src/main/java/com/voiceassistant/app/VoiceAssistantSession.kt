@@ -281,8 +281,8 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
             i += 2
         }
         
-        // Threshold: ~0.3% of max 16-bit value (32767) - very low threshold for noise gate
-        val threshold = 100
+        // Threshold: ~1% of max 16-bit value (32767) - very low threshold for noise gate
+        val threshold = 300
         
         return if (maxAmplitude > threshold) {
             // Audio is above threshold, return it as-is

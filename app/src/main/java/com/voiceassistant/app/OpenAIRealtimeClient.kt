@@ -78,15 +78,15 @@ class OpenAIRealtimeClient(
             addProperty("type", "session.update")
             add("session", JsonObject().apply {
                 add("modalities", gson.toJsonTree(listOf("text", "audio")))
-                addProperty("instructions", "You are Simon, a helpful and friendly AI assistant. Be concise, personable, and natural in your responses.")
+                addProperty("instructions", "You are Simon, a helpful and friendly AI assistant. Be concise, personable, and natural in your responses. Always respond in English unless explicitly asked to use another language.")
                 addProperty("voice", "echo")
                 addProperty("input_audio_format", "pcm16")
                 addProperty("output_audio_format", "pcm16")
                 add("turn_detection", JsonObject().apply {
                     addProperty("type", "server_vad")
-                    addProperty("threshold", 0.5) // Balanced threshold for responsiveness
+                    addProperty("threshold", 0.7) // Higher threshold to reduce false triggers
                     addProperty("prefix_padding_ms", 300)
-                    addProperty("silence_duration_ms", 500) // Faster turn detection
+                    addProperty("silence_duration_ms", 800) // Longer silence required
                 })
             })
         }
