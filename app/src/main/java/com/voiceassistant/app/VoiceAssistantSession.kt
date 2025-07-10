@@ -166,10 +166,8 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
                     if (readSize > 0) {
                         totalBytesRead += readSize
                         // Always send audio to maintain continuous stream
-                        // OpenAI needs continuous audio for proper VAD operation
-                        if (!isSpeaking) {
-                            openAIClient?.sendAudioInput(buffer.copyOf(readSize))
-                        }
+                        // OpenAI needs continuous audio for interruption detection
+                        openAIClient?.sendAudioInput(buffer.copyOf(readSize))
                     } else if (readSize < 0) {
                         Log.e(TAG, "AudioRecord read error: $readSize")
                     }
