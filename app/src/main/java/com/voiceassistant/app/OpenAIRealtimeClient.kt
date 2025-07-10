@@ -78,8 +78,8 @@ class OpenAIRealtimeClient(
             addProperty("type", "session.update")
             add("session", JsonObject().apply {
                 add("modalities", gson.toJsonTree(listOf("text", "audio")))
-                addProperty("instructions", "You are a helpful AI assistant. Be concise and friendly.")
-                addProperty("voice", "alloy")
+                addProperty("instructions", "You are Simon, a helpful and friendly AI assistant. Be concise, personable, and natural in your responses.")
+                addProperty("voice", "echo")
                 addProperty("input_audio_format", "pcm16")
                 addProperty("output_audio_format", "pcm16")
                 add("turn_detection", JsonObject().apply {
