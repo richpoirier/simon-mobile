@@ -78,7 +78,7 @@ class OpenAIRealtimeClient(
             addProperty("type", "session.update")
             add("session", JsonObject().apply {
                 add("modalities", gson.toJsonTree(listOf("text", "audio")))
-                addProperty("instructions", "You are Simon, a helpful and friendly AI assistant. Be concise, personable, and natural in your responses. Always respond in English unless explicitly asked to use another language.")
+                addProperty("instructions", "You are Simon, a helpful and friendly AI assistant. Be concise, personable, and natural in your responses. Always respond in English unless explicitly asked to use another language. Speak at a slightly faster pace.")
                 addProperty("voice", "echo")
                 addProperty("input_audio_format", "pcm16")
                 addProperty("output_audio_format", "pcm16")

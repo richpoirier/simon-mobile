@@ -50,6 +50,19 @@ class AudioPlayer(private val context: Context) {
             .build()
 
         audioTrack?.play()
+        
+        // Speed up playback by 15% (1.15x speed)
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                val params = audioTrack?.playbackParams
+                params?.setSpeed(1.15f)
+                params?.let { audioTrack?.playbackParams = it }
+                Log.d(TAG, "Set playback speed to 1.15x")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not set playback speed", e)
+        }
+        
         isPlaying = true
         Log.d(TAG, "AudioTrack initialized and playing")
     }
