@@ -1,6 +1,9 @@
 {
   // Kotlin and Java settings
-  "kotlin.languageServer.path": "",
+  "kotlin.languageServer.enabled": true,
+  "kotlin.compiler.jvm.target": "11",
+  "kotlin.debugAdapter.enabled": true,
+  "kotlin.linting.debounceTime": 250,
   "java.home": "/usr/lib/jvm/java-17-openjdk-amd64",
   "java.configuration.runtimes": [
     {
@@ -14,6 +17,7 @@
   "java.import.gradle.enabled": true,
   "java.import.gradle.wrapper.enabled": true,
   "java.import.gradle.offline.enabled": false,
+  "java.import.gradle.java.home": "/usr/lib/jvm/java-17-openjdk-amd64",
   "gradle.nestedProjects": true,
   
   // Android specific
@@ -32,18 +36,23 @@
   // File associations
   "files.associations": {
     "*.gradle": "groovy",
-    "*.pro": "groovy"
+    "*.pro": "groovy",
+    "*.kt": "kotlin"
   },
   
   // Terminal
   "terminal.integrated.defaultProfile.linux": "bash",
+  "terminal.integrated.env.linux": {
+    "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64",
+    "ANDROID_HOME": "${env:HOME}/Android/Sdk"
+  },
   
   // Exclude build directories
   "files.exclude": {
-    "**/build": true,
+    "**/build": false,
     "**/.gradle": true,
     "**/.idea": true,
-    "**/app/build": true
+    "**/app/build": false
   },
   
   // Search exclude
@@ -51,5 +60,6 @@
     "**/build": true,
     "**/.gradle": true,
     "**/app/build": true
-  }
+  },
+  "java.configuration.updateBuildConfiguration": "automatic"
 }
