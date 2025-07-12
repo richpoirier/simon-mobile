@@ -1,0 +1,55 @@
+{
+  // Kotlin and Java settings
+  "kotlin.languageServer.path": "",
+  "java.home": "/usr/lib/jvm/java-17-openjdk-amd64",
+  "java.configuration.runtimes": [
+    {
+      "name": "JavaSE-17",
+      "path": "/usr/lib/jvm/java-17-openjdk-amd64",
+      "default": true
+    }
+  ],
+  
+  // Gradle settings
+  "java.import.gradle.enabled": true,
+  "java.import.gradle.wrapper.enabled": true,
+  "java.import.gradle.offline.enabled": false,
+  "gradle.nestedProjects": true,
+  
+  // Android specific
+  "android-dev-ext.androidSDKPath": "${env:HOME}/Android/Sdk",
+  "android-dev-ext.gradlePath": "./gradlew",
+  
+  // Editor settings
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "explicit"
+  },
+  "[kotlin]": {
+    "editor.defaultFormatter": "fwcd.kotlin"
+  },
+  
+  // File associations
+  "files.associations": {
+    "*.gradle": "groovy",
+    "*.pro": "groovy"
+  },
+  
+  // Terminal
+  "terminal.integrated.defaultProfile.linux": "bash",
+  
+  // Exclude build directories
+  "files.exclude": {
+    "**/build": true,
+    "**/.gradle": true,
+    "**/.idea": true,
+    "**/app/build": true
+  },
+  
+  // Search exclude
+  "search.exclude": {
+    "**/build": true,
+    "**/.gradle": true,
+    "**/app/build": true
+  }
+}

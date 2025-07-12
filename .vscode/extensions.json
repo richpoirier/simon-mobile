@@ -1,0 +1,28 @@
+{
+  "recommendations": [
+    // Kotlin Language Support
+    "fwcd.kotlin",
+    
+    // Android Development
+    "adelphes.android-dev-ext",
+    "naco-siren.gradle-language",
+    
+    // Java Support (required for Android)
+    "vscjava.vscode-java-pack",
+    
+    // Additional Helpful Extensions
+    "vscjava.vscode-gradle",
+    "richardwillis.vscode-gradle-extension-pack",
+    "mathiasfrohlich.kotlin",
+    
+    // Code Quality
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    
+    // Git
+    "eamodio.gitlens",
+    
+    // XML Support (for Android layouts)
+    "redhat.vscode-xml"
+  ]
+}
