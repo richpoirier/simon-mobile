@@ -1,3 +1,0 @@
-@echo off
-echo Opening Simon Mobile in Android Studio...
-start "" "C:\Program Files\Android\Android Studio\bin\studio64.exe" "\\wsl$\Ubuntu\home\rich\src\simon-mobile"
