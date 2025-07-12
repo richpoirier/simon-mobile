@@ -160,28 +160,34 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
             scope?.launch {
                 val buffer = ByteArray(bufferSize)
                 var silenceFrames = 0
+                var speechDetected = false
                 val silenceThreshold = 1000 // Amplitude threshold for silence
                 val maxSilenceFrames = 30 // About 1 second of silence at 16kHz
                 
                 while (isRecording && !isSpeaking) {
                     val readSize = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                     if (readSize > 0) {
-                        openAIClient?.sendAudioInput(buffer.copyOf(readSize))
-                        
-                        // Check if this frame is silence
+                        // Check if this frame has speech
                         val maxAmplitude = getMaxAmplitude(buffer, readSize)
-                        if (maxAmplitude < silenceThreshold) {
+                        
+                        if (maxAmplitude >= silenceThreshold) {
+                            speechDetected = true
+                            silenceFrames = 0 // Reset silence counter
+                            openAIClient?.sendAudioInput(buffer.copyOf(readSize))
+                        } else if (speechDetected) {
+                            // Only count silence after speech was detected
+                            openAIClient?.sendAudioInput(buffer.copyOf(readSize))
                             silenceFrames++
+                            
                             if (silenceFrames > maxSilenceFrames) {
                                 // User has stopped speaking
-                                Log.d(TAG, "Detected end of speech")
+                                Log.d(TAG, "Detected end of speech after ${silenceFrames} silent frames")
                                 stopListening()
                                 openAIClient?.commitAudioAndGetResponse()
                                 break
                             }
-                        } else {
-                            silenceFrames = 0 // Reset on speech
                         }
+                        // If no speech detected yet, don't send audio
                     }
                 }
                 Log.d(TAG, "Stopped recording")
@@ -285,8 +291,13 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
         Log.d(TAG, "Audio playback complete")
         isSpeaking = false
         updateStatus("Ready")
-        // Automatically start listening again for the next query
-        startListening()
+        // Wait a moment before listening again to avoid immediate re-triggering
+        scope?.launch {
+            delay(500) // Half second delay
+            if (!isRecording && !isSpeaking) {
+                startListening()
+            }
+        }
     }
 
 
