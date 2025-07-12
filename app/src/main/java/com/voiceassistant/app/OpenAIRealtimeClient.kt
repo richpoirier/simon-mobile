@@ -34,7 +34,6 @@ class OpenAIRealtimeClient(
         fun onTextResponse(text: String)
         fun onError(error: String)
         fun onDisconnected()
-        fun onInterruption()
         fun onAudioComplete()
     }
 
@@ -82,23 +81,35 @@ class OpenAIRealtimeClient(
                 addProperty("voice", "echo")
                 addProperty("input_audio_format", "pcm16")
                 addProperty("output_audio_format", "pcm16")
-                add("turn_detection", JsonObject().apply {
-                    addProperty("type", "server_vad")
-                    addProperty("threshold", 0.5) // Default OpenAI threshold
-                    addProperty("prefix_padding_ms", 300) // Default padding
-                    addProperty("silence_duration_ms", 500) // Default silence duration
-                })
+                // No VAD - we handle when to send audio manually
+                add("turn_detection", null)
             })
         }
         sendEvent(sessionUpdate)
     }
 
     fun sendAudioInput(audioData: ByteArray) {
-        val audioAppend = JsonObject().apply {
-            addProperty("type", "input_audio_buffer.append")
-            addProperty("audio", android.util.Base64.encodeToString(audioData, android.util.Base64.NO_WRAP))
+        if (!isResponseActive) {
+            val audioAppend = JsonObject().apply {
+                addProperty("type", "input_audio_buffer.append")
+                addProperty("audio", android.util.Base64.encodeToString(audioData, android.util.Base64.NO_WRAP))
+            }
+            sendEvent(audioAppend)
         }
-        sendEvent(audioAppend)
+    }
+    
+    fun commitAudioAndGetResponse() {
+        // Commit the audio buffer and request a response
+        val commit = JsonObject().apply {
+            addProperty("type", "input_audio_buffer.commit")
+        }
+        sendEvent(commit)
+        
+        // Create response
+        val responseCreate = JsonObject().apply {
+            addProperty("type", "response.create")
+        }
+        sendEvent(responseCreate)
     }
 
     fun sendTextInput(text: String) {
@@ -124,17 +135,7 @@ class OpenAIRealtimeClient(
         sendEvent(responseCreate)
     }
 
-    fun cancelResponse() {
-        if (isResponseActive) {
-            val cancel = JsonObject().apply {
-                addProperty("type", "response.cancel")
-            }
-            sendEvent(cancel)
-            Log.d(TAG, "Sent response.cancel")
-        } else {
-            Log.d(TAG, "No active response to cancel")
-        }
-    }
+    // Removed - no longer supporting interruptions
 
     private fun sendEvent(event: JsonObject) {
         val json = gson.toJson(event)
@@ -173,27 +174,12 @@ class OpenAIRealtimeClient(
                     listener.onTextResponse(text)
                 }
                 "input_audio_buffer.speech_started" -> {
-                    Log.d(TAG, "OpenAI detected speech_started")
-                    // Only interrupt if there's an active response
-                    if (isResponseActive) {
-                        Log.d(TAG, "Interrupting current response")
-                        listener.onInterruption()
-                    }
+                    Log.d(TAG, "Ignoring speech_started - VAD disabled")
                 }
                 "input_audio_buffer.speech_stopped" -> {
-                    Log.d(TAG, "OpenAI detected speech_stopped")
+                    Log.d(TAG, "Ignoring speech_stopped - VAD disabled")
                 }
-                "response.cancelled" -> {
-                    isResponseActive = false
-                    Log.d(TAG, "Response cancelled")
-                    // Don't call onInterruption here - it's already been called
-                }
-                "response.cancel_failed" -> {
-                    val error = event.getAsJsonObject("error")
-                    val code = error?.get("code")?.asString
-                    Log.w(TAG, "Cancel failed: $code - likely no active response")
-                    // Don't treat this as a fatal error
-                }
+                // Removed cancel-related events
                 "error" -> {
                     val error = event.getAsJsonObject("error")
                     val code = error?.get("code")?.asString

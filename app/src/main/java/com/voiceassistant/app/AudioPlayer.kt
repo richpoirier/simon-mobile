@@ -92,13 +92,6 @@ class AudioPlayer(private val context: Context) {
         }
     }
 
-    fun clearQueue() {
-        Log.d(TAG, "Clearing audio queue, had ${audioQueue.size} items")
-        audioQueue.clear()
-        audioTrack?.pause()
-        audioTrack?.flush()
-        audioTrack?.play()
-    }
 
     fun release() {
         isPlaying = false

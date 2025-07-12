@@ -122,15 +122,14 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
     }
 
     private fun startListening() {
-        if (isRecording) {
-            Log.d(TAG, "Already recording")
+        if (isRecording || isSpeaking) {
+            Log.d(TAG, "Already recording or speaking")
             return
         }
 
         val minBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-        // Use 2x the minimum buffer size for lower latency
         val bufferSize = minBufferSize * 2
-        Log.d(TAG, "Audio buffer size: $bufferSize (min was $minBufferSize)")
+        Log.d(TAG, "Audio buffer size: $bufferSize")
         
         if (context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             Log.e(TAG, "No audio recording permission")
@@ -140,7 +139,7 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
 
         try {
             audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.VOICE_RECOGNITION, // Optimized for voice assistants
+                MediaRecorder.AudioSource.VOICE_RECOGNITION,
                 SAMPLE_RATE,
                 CHANNEL_CONFIG,
                 AUDIO_FORMAT,
@@ -160,19 +159,32 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
 
             scope?.launch {
                 val buffer = ByteArray(bufferSize)
-                var totalBytesRead = 0
-                while (isRecording) {
+                var silenceFrames = 0
+                val silenceThreshold = 1000 // Amplitude threshold for silence
+                val maxSilenceFrames = 30 // About 1 second of silence at 16kHz
+                
+                while (isRecording && !isSpeaking) {
                     val readSize = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                     if (readSize > 0) {
-                        totalBytesRead += readSize
-                        // Always send audio to maintain continuous stream
-                        // OpenAI needs continuous audio for interruption detection
                         openAIClient?.sendAudioInput(buffer.copyOf(readSize))
-                    } else if (readSize < 0) {
-                        Log.e(TAG, "AudioRecord read error: $readSize")
+                        
+                        // Check if this frame is silence
+                        val maxAmplitude = getMaxAmplitude(buffer, readSize)
+                        if (maxAmplitude < silenceThreshold) {
+                            silenceFrames++
+                            if (silenceFrames > maxSilenceFrames) {
+                                // User has stopped speaking
+                                Log.d(TAG, "Detected end of speech")
+                                stopListening()
+                                openAIClient?.commitAudioAndGetResponse()
+                                break
+                            }
+                        } else {
+                            silenceFrames = 0 // Reset on speech
+                        }
                     }
                 }
-                Log.d(TAG, "Stopped recording loop, total bytes: $totalBytesRead")
+                Log.d(TAG, "Stopped recording")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error starting recording", e)
@@ -195,7 +207,7 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
             // Update hint text based on status
             when {
                 status.contains("Listening", ignoreCase = true) -> {
-                    hintText.text = "Speak now..."
+                    hintText.text = "Speak your question, then pause..."
                     hintText.alpha = 0.8f
                 }
                 status.contains("Processing", ignoreCase = true) -> {
@@ -203,11 +215,15 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
                     hintText.alpha = 0.6f
                 }
                 status.contains("Response", ignoreCase = true) -> {
-                    hintText.text = ""
-                    hintText.alpha = 0f
+                    hintText.text = "Simon is speaking..."
+                    hintText.alpha = 0.6f
+                }
+                status.contains("Ready", ignoreCase = true) -> {
+                    hintText.text = "Ask another question..."
+                    hintText.alpha = 0.6f
                 }
                 else -> {
-                    hintText.text = "Say \"Hey Simon\" or tap to speak"
+                    hintText.text = "Say \"Hey Simon\" to start"
                     hintText.alpha = 0.6f
                 }
             }
@@ -223,7 +239,8 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
     override fun onAudioResponse(audioData: ByteArray) {
         if (!isSpeaking) {
             isSpeaking = true
-            Log.d(TAG, "Assistant started speaking - pausing audio input")
+            stopListening() // Stop recording while speaking
+            Log.d(TAG, "Assistant started speaking")
         }
         audioPlayer?.playAudio(audioData)
     }
@@ -249,25 +266,11 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
     override fun onDisconnected() {
         updateStatus("Disconnected")
     }
-
-    override fun onInterruption() {
-        Log.d(TAG, "Interruption detected - clearing audio queue")
-        isSpeaking = false  // Resume audio input immediately
-        audioPlayer?.clearQueue()
-        openAIClient?.cancelResponse()
-    }
-
-    override fun onAudioComplete() {
-        Log.d(TAG, "Audio playback complete - resuming audio input")
-        isSpeaking = false
-    }
-
-    private fun isAudioAboveThreshold(buffer: ByteArray, size: Int): Boolean {
-        // Check if audio is above threshold
+    
+    private fun getMaxAmplitude(buffer: ByteArray, size: Int): Int {
         var maxAmplitude = 0
         var i = 0
         while (i < size - 1) {
-            // Convert two bytes to a 16-bit signed integer
             val sample = (buffer[i].toInt() and 0xFF) or (buffer[i + 1].toInt() shl 8)
             val amplitude = kotlin.math.abs(sample)
             if (amplitude > maxAmplitude) {
@@ -275,11 +278,17 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
             }
             i += 2
         }
-        
-        // Use a reasonable threshold
-        val threshold = 500
-        return maxAmplitude > threshold
+        return maxAmplitude
     }
+
+    override fun onAudioComplete() {
+        Log.d(TAG, "Audio playback complete")
+        isSpeaking = false
+        updateStatus("Ready")
+        // Automatically start listening again for the next query
+        startListening()
+    }
+
 
     private fun cleanupPreviousSession() {
         Log.d(TAG, "Cleaning up previous session")
