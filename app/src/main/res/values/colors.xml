@@ -7,4 +7,14 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    
+    <!-- Simon colors -->
+    <color name="primary_blue">#4A90E2</color>
+    <color name="secondary_purple">#7B68EE</color>
+    <color name="background_dark">#0F1419</color>
+    <color name="background_darker">#0A0E13</color>
+    <color name="white_alpha_70">#B3FFFFFF</color>
+    <color name="white_alpha_50">#80FFFFFF</color>
+    <color name="gradient_start">#1A237E</color>
+    <color name="gradient_end">#000000</color>
 </resources>

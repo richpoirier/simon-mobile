@@ -1,0 +1,2 @@
+# Placeholder for ready_tone.mp3
+# The AudioPlayer will generate a tone programmatically if this file is not found

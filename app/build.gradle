@@ -1,82 +1,63 @@
-plugins {
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
-}
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
 
 android {
-    namespace 'com.voiceassistant.app'
-    compileSdk 34
+    compileSdk 35
+    buildToolsVersion "36.0.0"
     
-    testOptions {
-        unitTests {
-            includeAndroidResources = true
-            returnDefaultValues = true
-        }
-    }
-
     defaultConfig {
-        applicationId "com.voiceassistant.app"
+        applicationId "com.simon.app"
         minSdk 26
-        targetSdk 34
+        targetSdk 35
         versionCode 1
         versionName "1.0"
-
+        
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
-
+    
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+    
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
+    
     kotlinOptions {
-        jvmTarget = '11'
+        jvmTarget = '17'
     }
-    buildFeatures {
-        viewBinding true
-    }
+    
+    namespace 'com.simon.app'
 }
 
-// Task to copy config.properties to assets if it exists
-task copyConfig(type: Copy) {
-    from "${rootDir}/config.properties"
-    into "src/main/assets"
-    onlyIf { file("${rootDir}/config.properties").exists() }
-}
-
-preBuild.dependsOn copyConfig
 
 dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     
-    // WebSocket client for OpenAI Realtime API
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    // WebRTC
+    implementation 'com.github.webrtc-sdk:android:104.5112.09'
     
-    // Coroutines for async operations
+    // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
     
-    // JSON parsing
+    // JSON
     implementation 'com.google.code.gson:gson:2.10.1'
     
-    // Audio recording and processing
-    implementation 'androidx.media:media:1.7.0'
-    
-    // Testing dependencies
+    // Testing
     testImplementation 'junit:junit:4.13.2'
-    testImplementation 'io.mockk:mockk:1.13.8'
-    testImplementation 'io.mockk:mockk-android:1.13.8'
+    testImplementation 'org.mockito:mockito-core:5.8.0'
+    testImplementation 'org.mockito.kotlin:mockito-kotlin:5.2.1'
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
     testImplementation 'org.robolectric:robolectric:4.11.1'
     
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
-    androidTestImplementation 'io.mockk:mockk-android:1.13.8'
 }

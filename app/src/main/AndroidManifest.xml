@@ -1,68 +1,73 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
-
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    
     <!-- Permissions -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.BIND_VOICE_INTERACTION" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
-
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    
     <application
         android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/ic_simon"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:roundIcon="@drawable/ic_simon"
         android:supportsRtl="true"
-        android:theme="@style/Theme.VoiceAssistant">
-
+        android:theme="@style/Theme.Simon">
+        
         <!-- Main Activity -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:theme="@style/Theme.Simon">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
-
+        
+        <!-- Voice Session Activity -->
+        <activity
+            android:name=".VoiceSessionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Simon"
+            android:launchMode="singleTask"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true" />
+        
         <!-- Voice Interaction Service -->
         <service
             android:name=".VoiceAssistantService"
             android:exported="true"
-            android:label="@string/voice_assistant_label"
+            android:label="@string/app_name"
             android:permission="android.permission.BIND_VOICE_INTERACTION">
-            <intent-filter>
-                <action android:name="android.service.voice.VoiceInteractionService" />
-            </intent-filter>
             <meta-data
                 android:name="android.voice_interaction"
                 android:resource="@xml/voice_interaction_service" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
         </service>
-
+        
         <!-- Voice Interaction Session Service -->
         <service
             android:name=".VoiceAssistantSessionService"
-            android:exported="false"
             android:permission="android.permission.BIND_VOICE_INTERACTION" />
-
-        <!-- Recognition Service (Required for Android 15) -->
+        
+        <!-- Recognition Service -->
         <service
-            android:name=".VoiceRecognitionService"
+            android:name=".SimonRecognitionService"
             android:exported="true"
             android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.speech.RecognitionService" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            <meta-data
-                android:name="android.speech"
-                android:resource="@xml/recognition_service" />
         </service>
-
+        
     </application>
-
 </manifest>

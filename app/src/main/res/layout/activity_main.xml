@@ -1,64 +1,69 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
-
+    android:background="@drawable/gradient_background">
+    
+    <ImageView
+        android:id="@+id/simon_logo"
+        android:layout_width="120dp"
+        android:layout_height="120dp"
+        android:src="@drawable/ic_simon"
+        android:layout_marginBottom="32dp"
+        app:layout_constraintBottom_toTopOf="@+id/title_text"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_chainStyle="packed" />
+    
     <TextView
-        android:layout_width="match_parent"
+        android:id="@+id/title_text"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="OpenAI Voice Assistant Setup"
-        android:textSize="24sp"
+        android:text="Simon"
+        android:textColor="@color/white"
+        android:textSize="36sp"
         android:textStyle="bold"
-        android:gravity="center"
-        android:layout_marginBottom="32dp" />
-
+        android:layout_marginBottom="16dp"
+        app:layout_constraintBottom_toTopOf="@+id/subtitle_text"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/simon_logo" />
+    
     <TextView
-        android:id="@+id/status_text_view"
-        android:layout_width="match_parent"
+        android:id="@+id/subtitle_text"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Checking API key configuration..."
-        android:textSize="16sp"
-        android:textAlignment="center"
-        android:padding="16dp"
-        android:background="@android:color/darker_gray"
-        android:textColor="@android:color/white"
-        android:layout_marginBottom="16dp" />
-
+        android:text="Voice Assistant"
+        android:textColor="@color/white_alpha_70"
+        android:textSize="18sp"
+        android:layout_marginBottom="48dp"
+        app:layout_constraintBottom_toTopOf="@+id/set_default_button"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/title_text" />
+    
+    <Button
+        android:id="@+id/set_default_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Set as Default Assistant"
+        android:layout_marginBottom="16dp"
+        app:layout_constraintBottom_toTopOf="@+id/test_button"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/subtitle_text" />
+    
     <Button
         android:id="@+id/test_button"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Test Voice Assistant"
-        android:layout_marginBottom="32dp" />
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@android:color/darker_gray"
-        android:layout_marginVertical="16dp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Assistant Setup"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="8dp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="To use this app as your default voice assistant, you need to set it in Android settings."
-        android:textSize="14sp"
-        android:layout_marginBottom="16dp" />
-
-    <Button
-        android:id="@+id/setup_assistant_button"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Setup as Default Assistant" />
-
-</LinearLayout>
+        android:text="Test Simon"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/set_default_button" />
+    
+</androidx.constraintlayout.widget.ConstraintLayout>
