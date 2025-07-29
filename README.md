@@ -4,7 +4,7 @@ Simon is a beautiful, minimal Android voice assistant that uses OpenAI's Realtim
 
 ## Features
 
-- **System Integration**: Works as default Android digital assistant via side button or swipe gestures
+- **System Integration**: Works as default Android digital assistant via side button
 - **Real-time Conversations**: Natural speech-to-speech using OpenAI's WebRTC integration
 - **Beautiful UI**: Text-free interface with smooth ripple animations
 - **Semantic VAD**: Intelligent voice activity detection for natural conversation flow

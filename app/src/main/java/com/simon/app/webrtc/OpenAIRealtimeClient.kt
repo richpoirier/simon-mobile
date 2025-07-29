@@ -1,6 +1,5 @@
 package com.simon.app.webrtc
 
-import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -14,13 +13,13 @@ import org.webrtc.audio.JavaAudioDeviceModule
 import java.nio.ByteBuffer
 
 class OpenAIRealtimeClient(
-    private val context: Context,
     private val apiKey: String,
-    private val listener: Listener
+    private val listener: Listener,
+    private val peerConnectionFactory: PeerConnectionFactory,
+    private val baseUrl: String = "https://api.openai.com/v1/realtime"
 ) {
     
     companion object {
-        private const val OPENAI_URL = "https://api.openai.com/v1/realtime"
         private const val MODEL = "gpt-4o-realtime-preview-2025-06-03"
         private const val VOICE = "ballad"
         private const val SAMPLE_RATE = 24000
@@ -45,85 +44,10 @@ class OpenAIRealtimeClient(
     private var localAudioTrack: AudioTrack? = null
     private var audioRecord: AudioRecord? = null
     
-    private var eglBaseContext: EglBase.Context? = null
-    private var peerConnectionFactory: PeerConnectionFactory? = null
-    private var audioDeviceModule: AudioDeviceModule? = null
-    private var isInitialized = false
-    
-    init {
-        // WebRTC initialization must happen on the main thread
-        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
-            initializeWebRTC()
-        }
-    }
-    
-    private fun initializeWebRTC() {
-        try {
-            if (!isInitialized) {
-                val options = PeerConnectionFactory.InitializationOptions.builder(context)
-                    .setEnableInternalTracer(true)
-                    .createInitializationOptions()
-                PeerConnectionFactory.initialize(options)
-                
-                eglBaseContext = EglBase.create().eglBaseContext
-                
-                // Create audio device module for proper audio routing
-                audioDeviceModule = JavaAudioDeviceModule.builder(context)
-                    .setUseHardwareAcousticEchoCanceler(true)
-                    .setUseHardwareNoiseSuppressor(true)
-                    .setAudioRecordErrorCallback(object : JavaAudioDeviceModule.AudioRecordErrorCallback {
-                        override fun onWebRtcAudioRecordInitError(errorMessage: String?) {
-                            android.util.Log.e("OpenAIRealtimeClient", "Audio record init error: $errorMessage")
-                        }
-                        override fun onWebRtcAudioRecordStartError(errorCode: JavaAudioDeviceModule.AudioRecordStartErrorCode?, errorMessage: String?) {
-                            android.util.Log.e("OpenAIRealtimeClient", "Audio record start error: $errorMessage")
-                        }
-                        override fun onWebRtcAudioRecordError(errorMessage: String?) {
-                            android.util.Log.e("OpenAIRealtimeClient", "Audio record error: $errorMessage")
-                        }
-                    })
-                    .setAudioTrackErrorCallback(object : JavaAudioDeviceModule.AudioTrackErrorCallback {
-                        override fun onWebRtcAudioTrackInitError(errorMessage: String?) {
-                            android.util.Log.e("OpenAIRealtimeClient", "Audio track init error: $errorMessage")
-                        }
-                        override fun onWebRtcAudioTrackStartError(errorCode: JavaAudioDeviceModule.AudioTrackStartErrorCode?, errorMessage: String?) {
-                            android.util.Log.e("OpenAIRealtimeClient", "Audio track start error: $errorMessage")
-                        }
-                        override fun onWebRtcAudioTrackError(errorMessage: String?) {
-                            android.util.Log.e("OpenAIRealtimeClient", "Audio track error: $errorMessage")
-                        }
-                    })
-                    .createAudioDeviceModule()
-                
-                peerConnectionFactory = PeerConnectionFactory.builder()
-                    .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBaseContext))
-                    .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBaseContext, true, true))
-                    .setAudioDeviceModule(audioDeviceModule)
-                    .setOptions(PeerConnectionFactory.Options())
-                    .createPeerConnectionFactory()
-                    
-                isInitialized = true
-            }
-        } catch (e: Exception) {
-            // Handle initialization failure (likely in tests)
-            e.printStackTrace()
-        }
-    }
-    
     fun connect() {
         scope.launch {
             try {
                 android.util.Log.d("OpenAIRealtimeClient", "Starting connection...")
-                // Ensure WebRTC is initialized
-                withContext(Dispatchers.Main) {
-                    initializeWebRTC()
-                }
-                
-                if (!isInitialized) {
-                    throw IllegalStateException("WebRTC failed to initialize")
-                }
-                
-                android.util.Log.d("OpenAIRealtimeClient", "WebRTC initialized, setting up peer connection...")
                 setupPeerConnection()
                 android.util.Log.d("OpenAIRealtimeClient", "Peer connection setup, creating offer...")
                 createOffer()
@@ -145,7 +69,7 @@ class OpenAIRealtimeClient(
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_ONCE
         }
         
-        peerConnection = peerConnectionFactory?.createPeerConnection(
+        peerConnection = peerConnectionFactory.createPeerConnection(
             rtcConfig,
             object : PeerConnection.Observer {
                 override fun onIceCandidate(candidate: IceCandidate?) {}
@@ -199,16 +123,14 @@ class OpenAIRealtimeClient(
     }
     
     private fun setupLocalAudio() {
-        val audioSource = peerConnectionFactory?.createAudioSource(MediaConstraints().apply {
+        val audioSource = peerConnectionFactory.createAudioSource(MediaConstraints().apply {
             mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
             mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
             mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
             mandatory.add(MediaConstraints.KeyValuePair("googHighpassFilter", "true"))
         })
         
-        localAudioTrack = audioSource?.let {
-            peerConnectionFactory?.createAudioTrack("audio0", it)
-        }
+        localAudioTrack = peerConnectionFactory.createAudioTrack("audio0", audioSource)
         localAudioTrack?.setEnabled(true)
         
         val streamId = "stream0"
@@ -247,7 +169,7 @@ class OpenAIRealtimeClient(
     private suspend fun sendOfferToOpenAI(offer: SessionDescription) {
         withContext(Dispatchers.IO) {
             try {
-                val url = java.net.URL("$OPENAI_URL?model=$MODEL")
+                val url = java.net.URL("$baseUrl?model=$MODEL")
                 val connection = url.openConnection() as java.net.HttpURLConnection
                 
                 connection.requestMethod = "POST"
@@ -422,14 +344,5 @@ class OpenAIRealtimeClient(
         peerConnection?.close()
         peerConnection?.dispose()
         peerConnection = null
-        
-        peerConnectionFactory?.dispose()
-        peerConnectionFactory = null
-        
-        audioDeviceModule?.release()
-        audioDeviceModule = null
-        
-        eglBaseContext = null
-        isInitialized = false
     }
 }
