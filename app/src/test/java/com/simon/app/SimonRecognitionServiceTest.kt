@@ -1,13 +1,11 @@
 package com.simon.app
 
 import android.content.Intent
-import android.speech.RecognitionListener
 import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.Mock
 import org.mockito.Mockito.*
 import org.mockito.MockitoAnnotations
 import org.robolectric.Robolectric
@@ -20,9 +18,6 @@ class SimonRecognitionServiceTest {
 
     private lateinit var serviceController: ServiceController<SimonRecognitionService>
     private lateinit var service: SimonRecognitionService
-
-    @Mock
-    private lateinit var mockRecognitionListener: RecognitionListener
 
     @Before
     fun setup() {
@@ -52,7 +47,7 @@ class SimonRecognitionServiceTest {
             RecognitionService.Callback::class.java
         )
         onStopListeningMethod.isAccessible = true
-        onStopListeningMethod.invoke(service, null, null)
+        onStopListeningMethod.invoke(service, null)
     }
 
     @Test
@@ -62,6 +57,6 @@ class SimonRecognitionServiceTest {
             RecognitionService.Callback::class.java
         )
         onCancelMethod.isAccessible = true
-        onCancelMethod.invoke(service, null, null)
+        onCancelMethod.invoke(service, null)
     }
 }

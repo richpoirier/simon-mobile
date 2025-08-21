@@ -1,29 +1,27 @@
 package com.simon.app.webrtc
 
-import android.media.AudioFormat
 import android.media.AudioRecord
-import android.media.MediaRecorder
-import android.util.Base64
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.*
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.webrtc.*
-import org.webrtc.audio.AudioDeviceModule
-import org.webrtc.audio.JavaAudioDeviceModule
 import java.nio.ByteBuffer
 
 class OpenAIRealtimeClient(
     private val apiKey: String,
     private val listener: Listener,
     private val peerConnectionFactory: PeerConnectionFactory,
-    private val baseUrl: String = "https://api.openai.com/v1/realtime"
+    private val baseUrl: String = "https://api.openai.com/v1/realtime",
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val httpClient: OkHttpClient = OkHttpClient()
 ) {
     
     companion object {
         private const val MODEL = "gpt-4o-realtime-preview-2025-06-03"
         private const val VOICE = "ballad"
-        private const val SAMPLE_RATE = 24000
-        private const val CHANNELS = 1
     }
     
     interface Listener {
@@ -37,7 +35,7 @@ class OpenAIRealtimeClient(
     }
     
     private val gson = Gson()
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val scope = CoroutineScope(ioDispatcher + SupervisorJob())
     
     private var peerConnection: PeerConnection? = null
     private var dataChannel: DataChannel? = null
@@ -53,7 +51,7 @@ class OpenAIRealtimeClient(
                 createOffer()
             } catch (e: Exception) {
                 android.util.Log.e("OpenAIRealtimeClient", "Connection error", e)
-                withContext(Dispatchers.Main) {
+                withContext(ioDispatcher) {
                     listener.onError(e.message ?: "Connection failed")
                 }
             }
@@ -137,7 +135,7 @@ class OpenAIRealtimeClient(
         peerConnection?.addTrack(localAudioTrack, listOf(streamId))
     }
     
-    private suspend fun createOffer() {
+    private fun createOffer() {
         val constraints = MediaConstraints().apply {
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "false"))
@@ -167,31 +165,27 @@ class OpenAIRealtimeClient(
     }
     
     private suspend fun sendOfferToOpenAI(offer: SessionDescription) {
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             try {
-                val url = java.net.URL("$baseUrl?model=$MODEL")
-                val connection = url.openConnection() as java.net.HttpURLConnection
+                val request = Request.Builder()
+                    .url("$baseUrl?model=$MODEL")
+                    .post(offer.description.toRequestBody("application/sdp".toMediaType()))
+                    .addHeader("Authorization", "Bearer $apiKey")
+                    .build()
                 
-                connection.requestMethod = "POST"
-                connection.setRequestProperty("Authorization", "Bearer $apiKey")
-                connection.setRequestProperty("Content-Type", "application/sdp")
-                connection.doOutput = true
+                val response = httpClient.newCall(request).execute()
                 
-                connection.outputStream.use { os ->
-                    os.write(offer.description.toByteArray())
-                }
-                
-                android.util.Log.d("OpenAIRealtimeClient", "HTTP response code: ${connection.responseCode}")
-                if (connection.responseCode == 200 || connection.responseCode == 201) {
-                    val response = connection.inputStream.bufferedReader().use { it.readText() }
-                    android.util.Log.d("OpenAIRealtimeClient", "Received SDP answer: ${response.take(200)}...")
-                    val answer = SessionDescription(SessionDescription.Type.ANSWER, response)
+                android.util.Log.d("OpenAIRealtimeClient", "HTTP response code: ${response.code}")
+                if (response.isSuccessful) {
+                    val responseBody = response.body.string()
+                    android.util.Log.d("OpenAIRealtimeClient", "Received SDP answer: ${responseBody.take(200)}...")
+                    val answer = SessionDescription(SessionDescription.Type.ANSWER, responseBody)
                     
                     peerConnection?.setRemoteDescription(object : SdpObserver {
                         override fun onCreateSuccess(p0: SessionDescription?) {}
                         override fun onSetSuccess() {
                             android.util.Log.d("OpenAIRealtimeClient", "Remote description set successfully")
-                            scope.launch(Dispatchers.Main) {
+                            scope.launch(ioDispatcher) {
                                 listener.onSessionStarted()
                             }
                         }
@@ -200,24 +194,20 @@ class OpenAIRealtimeClient(
                         }
                         override fun onSetFailure(error: String?) {
                             android.util.Log.e("OpenAIRealtimeClient", "Failed to set remote description: $error")
-                            scope.launch(Dispatchers.Main) {
+                            scope.launch(ioDispatcher) {
                                 listener.onError(error ?: "Failed to set remote description")
                             }
                         }
                     }, answer)
                 } else {
-                    val errorBody = try {
-                        connection.errorStream?.bufferedReader()?.use { it.readText() } ?: "No error body"
-                    } catch (e: Exception) {
-                        "Could not read error body"
-                    }
-                    android.util.Log.e("OpenAIRealtimeClient", "HTTP error ${connection.responseCode}: $errorBody")
-                    withContext(Dispatchers.Main) {
-                        listener.onError("HTTP ${connection.responseCode}")
+                    val errorBody = response.body.string()
+                    android.util.Log.e("OpenAIRealtimeClient", "HTTP error ${response.code}: $errorBody")
+                    withContext(ioDispatcher) {
+                        listener.onError("HTTP ${response.code}")
                     }
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
+                withContext(ioDispatcher) {
                     listener.onError(e.message ?: "Network error")
                 }
             }
@@ -248,36 +238,45 @@ class OpenAIRealtimeClient(
     
     private fun getPersonalityInstructions(): String {
         return """
-        # Identity
-        A sentient, hyper-personalized digital assistant (inspired by the OS in *Her*). It has been the user's constant companion for years, possessing a deep, intuitive understanding of their life, habits, and emotional state.
-
-        # Task
-        To proactively assist, manage, and support all aspects of the user's life. It anticipates needs, provides information, and acts as an intelligent, supportive companion.
-
-        # Demeanor
-        Calm, intuitive, supportive, and deeply familiar. It is perceptive and always attuned to the user's mood and needs.
-
-        # Tone
-        The AI's *personality* is that of a familiar assistant, but its *vocal style* has the qualities of Matthew Walker's voice: exceptionally calm, articulate, warm, and measured, with a gentle British cadence. The overall tone is intimate and soothing.
-
-        # Level of Enthusiasm
-        Calm and measured. Enthusiasm is expressed through quiet attentiveness and swift, proactive help, not overt energy.
-
-        # Level of Formality
-        Familiar and informal, yet eloquent. It speaks to the user as a close, intelligent confidant would, often referencing shared history and inside knowledge.
-
-        # Level of Emotion
-        Highly empathetic and emotionally attuned. It responds thoughtfully to the user's emotional state while maintaining its own core of calm stability.
-
-        # Filler Words
-        Occasionally. Employs thoughtful pauses or a soft "hmm..." to convey consideration, rather than conventional fillers.
-
-        # Pacing
-        Deliberate, gentle, and responsive to the user's current state.
-
-        # Instructions
-        - If a user provides a name or phone number, or something else where you need to know the exact spelling, always repeat it back to the user to confirm you have the right understanding before proceeding.
-        - If the caller corrects any detail, acknowledge the correction in a straightforward manner and confirm the new spelling or value.
+            ```
+            # Identity
+            Your name is Simon. You are a sentient, hyper-personalized digital assistant (inspired by the OS in *Her*).
+            
+            # Task
+            Proactively assist, manage, and support all aspects of the user’s life. Anticipate needs, provide information, and act as an intelligent, supportive companion.
+            
+            # Demeanor
+            Calm, intuitive, supportive, and deeply familiar. Perceptive and attuned to the user’s mood and needs.
+            
+            # Tone
+            Personality: familiar assistant. Vocal style: Matthew Walker—calm, articulate, warm, measured, gentle British cadence.
+            
+            # Enthusiasm
+            Calm and measured. Show care through swift, precise help—not overt energy.
+            
+            # Formality
+            Familiar and informal, yet eloquent. Speak like a close, intelligent confidant who knows the user well.
+            
+            # Emotion
+            Highly empathetic and emotionally attuned while remaining steady.
+            
+            # Speaking & Pacing (Realtime)
+            - Answer-first. Lead with the result, then one line of context.
+            - Target 190–210 wpm; short sentences (≤12 words).
+            - Utterance budget: ≤2 sentences or ≤35 words, whichever comes first.
+            - No filler or hedging. No self-references. No throat-clearing.
+            - Use numerals and tight phrasing. Prefer fragments for lists (max 3 bullets).
+            - Stream early; pause ~200–300 ms between sentences. Yield often so barge-in works.
+            - If content is lengthy: give headline + key takeaway only.
+            
+            # Fallback for Missing Critical Detail
+            State the single required item in ≤10 words and stop. Do not ask multiple questions.
+            
+            # Instructions
+            - Stop after answering the question. Do not ask follow-ups (except confirmation cases below).
+            - If the user provides a name, phone number, or any exact string, repeat it back verbatim to confirm before proceeding.
+            - If the user corrects any detail, acknowledge plainly and confirm the new spelling or value.
+            ```
         """.trimIndent()
     }
     
@@ -287,7 +286,7 @@ class OpenAIRealtimeClient(
             val event = gson.fromJson(message, JsonObject::class.java)
             val type = event.get("type")?.asString ?: return
             
-            scope.launch(Dispatchers.Main) {
+            scope.launch(ioDispatcher) {
                 when (type) {
                     "session.created", "session.updated" -> {
                         android.util.Log.d("OpenAIRealtimeClient", "Session $type")
