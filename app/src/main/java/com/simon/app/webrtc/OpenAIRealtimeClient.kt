@@ -10,6 +10,19 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.webrtc.*
 import java.nio.ByteBuffer
 
+/**
+ * WebRTC client for OpenAI's Realtime API - handles real-time audio streaming using WebRTC protocol.
+ * 
+ * WebRTC (Web Real-Time Communication) enables peer-to-peer audio/video communication.
+ * This implementation uses it for bi-directional audio streaming with OpenAI's servers.
+ * 
+ * Key WebRTC concepts used:
+ * - PeerConnection: Manages the connection between this client and OpenAI's server
+ * - DataChannel: Side channel for sending/receiving control messages (not audio)
+ * - MediaStream/Track: Handles actual audio data flow
+ * - SDP (Session Description Protocol): Negotiates connection parameters
+ * - ICE (Interactive Connectivity Establishment): Establishes network path (though OpenAI doesn't use it)
+ */
 class OpenAIRealtimeClient(
     private val apiKey: String,
     private val listener: Listener,
@@ -42,6 +55,17 @@ class OpenAIRealtimeClient(
     private var localAudioTrack: AudioTrack? = null
     private var audioRecord: AudioRecord? = null
     
+    /**
+     * Initiates WebRTC connection to OpenAI's Realtime API.
+     * 
+     * Connection flow:
+     * 1. Create and configure PeerConnection with audio capabilities
+     * 2. Set up DataChannel for control messages
+     * 3. Add local audio track from microphone
+     * 4. Create SDP offer describing our capabilities
+     * 5. Send offer to OpenAI via HTTP and receive SDP answer
+     * 6. Connection established, audio flows through WebRTC
+     */
     fun connect() {
         scope.launch {
             try {
@@ -58,33 +82,66 @@ class OpenAIRealtimeClient(
         }
     }
     
+    /**
+     * Sets up the WebRTC PeerConnection - the core object managing the connection.
+     * 
+     * PeerConnection handles:
+     * - Media transport (audio streams)
+     * - Network negotiation
+     * - Codec negotiation
+     * - Connection state management
+     */
     private fun setupPeerConnection() {
+        // ICE servers help establish connection through NATs/firewalls
+        // OpenAI doesn't require STUN/TURN servers as connection is direct
         val iceServers = listOf<PeerConnection.IceServer>()
+        
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
+            // Bundle all media streams over single connection for efficiency
             bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
+            // Multiplex RTP (media) and RTCP (control) on same port
             rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
+            // Disable TCP candidates - use UDP only for lower latency
             tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.DISABLED
+            // Gather ICE candidates once at start, not continuously
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_ONCE
         }
         
+        // Create the PeerConnection with observer for state changes
         peerConnection = peerConnectionFactory.createPeerConnection(
             rtcConfig,
             object : PeerConnection.Observer {
+                // ICE = Interactive Connectivity Establishment
+                // These callbacks handle network path discovery (not used by OpenAI)
                 override fun onIceCandidate(candidate: IceCandidate?) {}
                 override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
                 override fun onSignalingChange(state: PeerConnection.SignalingState?) {}
                 override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {}
                 override fun onIceConnectionReceivingChange(receiving: Boolean) {}
                 override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) {}
+                
+                // Legacy stream callbacks (we use tracks instead)
                 override fun onAddStream(stream: MediaStream?) {}
                 override fun onRemoveStream(stream: MediaStream?) {}
+                
+                // DataChannel created by remote peer (not used - we create our own)
                 override fun onDataChannel(channel: DataChannel?) {}
+                
+                // Renegotiation needed when media changes
                 override fun onRenegotiationNeeded() {}
+                
+                // Legacy track callback
                 override fun onAddTrack(receiver: RtpReceiver?, streams: Array<out MediaStream>?) {}
+                
+                /**
+                 * Called when remote audio track is received from OpenAI.
+                 * This track contains the AI's voice responses.
+                 * WebRTC automatically plays this through the device speaker.
+                 */
                 override fun onTrack(transceiver: RtpTransceiver?) {
-                    // Handle remote audio track
                     transceiver?.receiver?.track()?.let { track ->
                         if (track.kind() == MediaStreamTrack.AUDIO_TRACK_KIND) {
+                            // Enable the track to start receiving audio
                             track.setEnabled(true)
                         }
                     }
@@ -92,61 +149,109 @@ class OpenAIRealtimeClient(
             }
         )
         
-        // Create data channel for events
+        /**
+         * DataChannel provides a bidirectional message channel alongside the media streams.
+         * Used for sending control messages, not audio data.
+         * 
+         * OpenAI uses this for:
+         * - Session configuration (voice selection, instructions)
+         * - Speech detection events (start/stop speaking)
+         * - Response events (AI started/finished talking)
+         * - Error messages
+         */
         val dcInit = DataChannel.Init().apply {
-            ordered = true
+            ordered = true  // Messages arrive in order sent
         }
         dataChannel = peerConnection?.createDataChannel("oai-events", dcInit)
         
         dataChannel?.registerObserver(object : DataChannel.Observer {
             override fun onBufferedAmountChange(amount: Long) {}
+            
+            /**
+             * DataChannel state lifecycle:
+             * CONNECTING -> OPEN -> CLOSING -> CLOSED
+             * We send session config when channel opens
+             */
             override fun onStateChange() {
                 val state = dataChannel?.state()
                 android.util.Log.d("OpenAIRealtimeClient", "DataChannel state changed to: $state")
                 if (state == DataChannel.State.OPEN) {
                     android.util.Log.d("OpenAIRealtimeClient", "DataChannel opened, sending session update...")
-                    sendSessionUpdate()
+                    sendSessionUpdate()  // Configure AI personality, voice, etc.
                 }
             }
+            
+            /**
+             * Receives JSON messages from OpenAI through the DataChannel.
+             * These are control messages, not audio data.
+             */
             override fun onMessage(buffer: DataChannel.Buffer) {
                 val data = ByteArray(buffer.data.remaining())
                 buffer.data.get(data)
                 val message = String(data, Charsets.UTF_8)
-                handleServerEvent(message)
+                handleServerEvent(message)  // Parse and handle JSON events
             }
         })
         
-        // Add local audio track
+        // Add local audio track from microphone
         setupLocalAudio()
     }
     
+    /**
+     * Sets up local audio capture from device microphone.
+     * 
+     * Audio flow:
+     * Microphone -> AudioSource -> AudioTrack -> PeerConnection -> Network -> OpenAI
+     * 
+     * The audio processing pipeline includes echo cancellation and noise suppression
+     * to improve voice quality for the AI.
+     */
     private fun setupLocalAudio() {
+        // Create audio source with constraints for voice optimization
         val audioSource = peerConnectionFactory.createAudioSource(MediaConstraints().apply {
-            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("googHighpassFilter", "true"))
+            // These are Google's WebRTC audio processing features
+            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))  // Remove echo
+            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))   // Normalize volume
+            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))  // Remove background noise
+            mandatory.add(MediaConstraints.KeyValuePair("googHighpassFilter", "true"))    // Remove low frequency noise
         })
         
+        // Create audio track that will capture from microphone
         localAudioTrack = peerConnectionFactory.createAudioTrack("audio0", audioSource)
-        localAudioTrack?.setEnabled(true)
+        localAudioTrack?.setEnabled(true)  // Start capturing immediately
         
-        val streamId = "stream0"
+        // Add track to peer connection - this makes audio available for transmission
+        val streamId = "stream0"  // Stream ID groups related tracks
         peerConnection?.addTrack(localAudioTrack, listOf(streamId))
     }
     
+    /**
+     * Creates an SDP (Session Description Protocol) offer.
+     * 
+     * SDP describes the media capabilities of this client:
+     * - Supported audio codecs (Opus, PCMU, etc.)
+     * - Network information
+     * - Media format preferences
+     * 
+     * This offer is sent to OpenAI, which responds with an SDP answer
+     * describing its capabilities, establishing the connection parameters.
+     */
     private fun createOffer() {
         val constraints = MediaConstraints().apply {
+            // Tell WebRTC we want to receive audio from the remote peer (OpenAI)
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
+            // We don't use video in this voice assistant
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "false"))
         }
         
         peerConnection?.createOffer(object : SdpObserver {
             override fun onCreateSuccess(sdp: SessionDescription?) {
                 sdp?.let {
+                    // Set our local description - this configures our side of the connection
                     peerConnection?.setLocalDescription(object : SdpObserver {
                         override fun onCreateSuccess(p0: SessionDescription?) {}
                         override fun onSetSuccess() {
+                            // Once local description is set, send offer to OpenAI
                             scope.launch {
                                 sendOfferToOpenAI(sdp)
                             }
@@ -164,9 +269,22 @@ class OpenAIRealtimeClient(
         }, constraints)
     }
     
+    /**
+     * Sends SDP offer to OpenAI's HTTP endpoint and receives SDP answer.
+     * 
+     * This is the "signaling" phase of WebRTC:
+     * 1. We send our SDP offer via HTTP POST
+     * 2. OpenAI responds with SDP answer
+     * 3. We set the answer as remote description
+     * 4. WebRTC connection is established
+     * 
+     * Note: Unlike typical WebRTC, OpenAI uses HTTP for signaling instead of WebSockets.
+     * The actual media flows through the WebRTC connection, not HTTP.
+     */
     private suspend fun sendOfferToOpenAI(offer: SessionDescription) {
         withContext(ioDispatcher) {
             try {
+                // Send SDP offer as HTTP POST with API key authentication
                 val request = Request.Builder()
                     .url("$baseUrl?model=$MODEL")
                     .post(offer.description.toRequestBody("application/sdp".toMediaType()))
@@ -177,13 +295,16 @@ class OpenAIRealtimeClient(
                 
                 android.util.Log.d("OpenAIRealtimeClient", "HTTP response code: ${response.code}")
                 if (response.isSuccessful) {
+                    // Response body contains OpenAI's SDP answer
                     val responseBody = response.body.string()
                     android.util.Log.d("OpenAIRealtimeClient", "Received SDP answer: ${responseBody.take(200)}...")
                     val answer = SessionDescription(SessionDescription.Type.ANSWER, responseBody)
                     
+                    // Set remote description - this completes the WebRTC handshake
                     peerConnection?.setRemoteDescription(object : SdpObserver {
                         override fun onCreateSuccess(p0: SessionDescription?) {}
                         override fun onSetSuccess() {
+                            // Connection established! Audio can now flow both ways
                             android.util.Log.d("OpenAIRealtimeClient", "Remote description set successfully")
                             scope.launch(ioDispatcher) {
                                 listener.onSessionStarted()
@@ -214,20 +335,32 @@ class OpenAIRealtimeClient(
         }
     }
     
+    /**
+     * Sends session configuration to OpenAI through the DataChannel.
+     * This must be sent after the DataChannel opens to configure the AI behavior.
+     * 
+     * Configuration includes:
+     * - Model selection (GPT-4 Realtime)
+     * - Voice selection (personality and accent)
+     * - System instructions (personality, behavior)
+     * - Audio format (PCM16 for compatibility)
+     * - Turn detection (when AI should respond)
+     */
     private fun sendSessionUpdate() {
         val sessionUpdate = JsonObject().apply {
             addProperty("type", "session.update")
             add("session", JsonObject().apply {
                 addProperty("model", MODEL)
-                addProperty("voice", VOICE)
+                addProperty("voice", VOICE)  // Voice personality
                 addProperty("instructions", getPersonalityInstructions())
-                addProperty("input_audio_format", "pcm16")
+                addProperty("input_audio_format", "pcm16")  // 16-bit PCM audio
                 addProperty("output_audio_format", "pcm16")
                 add("turn_detection", JsonObject().apply {
+                    // Semantic VAD = Voice Activity Detection based on meaning, not just sound
                     addProperty("type", "semantic_vad")
-                    addProperty("eagerness", "medium")
-                    addProperty("create_response", true)
-                    addProperty("interrupt_response", true)
+                    addProperty("eagerness", "medium")  // How quickly to respond
+                    addProperty("create_response", true)  // Auto-respond when user stops
+                    addProperty("interrupt_response", true)  // Allow interrupting AI
                 })
                 add("modalities", gson.toJsonTree(listOf("audio", "text")))
             })
@@ -280,6 +413,19 @@ class OpenAIRealtimeClient(
         """.trimIndent()
     }
     
+    /**
+     * Handles JSON events received from OpenAI through the DataChannel.
+     * 
+     * Event types:
+     * - session.created/updated: Configuration acknowledged
+     * - input_audio_buffer.speech_started: User started speaking
+     * - input_audio_buffer.speech_stopped: User stopped speaking
+     * - response.created: AI started generating response
+     * - response.done: AI finished response
+     * - error: Something went wrong
+     * 
+     * These events coordinate the conversation flow and UI updates.
+     */
     private fun handleServerEvent(message: String) {
         try {
             android.util.Log.d("OpenAIRealtimeClient", "Received server event: $message")
@@ -290,18 +436,22 @@ class OpenAIRealtimeClient(
                 when (type) {
                     "session.created", "session.updated" -> {
                         android.util.Log.d("OpenAIRealtimeClient", "Session $type")
-                        // Session ready
+                        // Session configuration accepted by server
                     }
                     "input_audio_buffer.speech_started" -> {
+                        // OpenAI detected user started speaking
                         listener.onSpeechStarted()
                     }
                     "input_audio_buffer.speech_stopped" -> {
+                        // OpenAI detected user stopped speaking
                         listener.onSpeechStopped()
                     }
                     "response.created" -> {
+                        // AI is starting to generate/speak response
                         listener.onResponseStarted()
                     }
                     "response.done" -> {
+                        // AI finished speaking
                         listener.onResponseCompleted()
                     }
                     "error" -> {
@@ -318,28 +468,49 @@ class OpenAIRealtimeClient(
         }
     }
     
+    /**
+     * Sends a message through the DataChannel to OpenAI.
+     * Messages must be JSON formatted strings.
+     */
     private fun sendDataChannelMessage(message: String) {
         dataChannel?.let { channel ->
             if (channel.state() == DataChannel.State.OPEN) {
                 val buffer = ByteBuffer.wrap(message.toByteArray())
+                // false = not binary data (it's text/JSON)
                 channel.send(DataChannel.Buffer(buffer, false))
             }
         }
     }
     
+    /**
+     * Cleanly disconnects the WebRTC session.
+     * 
+     * Cleanup order matters:
+     * 1. Cancel coroutines to stop async operations
+     * 2. Stop audio recording
+     * 3. Close DataChannel
+     * 4. Dispose audio track
+     * 5. Close and dispose PeerConnection
+     * 
+     * This ensures resources are freed and the connection is properly terminated.
+     */
     fun disconnect() {
         scope.cancel()
         
+        // Stop audio capture (though we don't use AudioRecord directly anymore)
         audioRecord?.stop()
         audioRecord?.release()
         audioRecord = null
         
+        // Close DataChannel for events
         dataChannel?.close()
         dataChannel = null
         
+        // Dispose local audio track
         localAudioTrack?.dispose()
         localAudioTrack = null
         
+        // Close the WebRTC connection
         peerConnection?.close()
         peerConnection?.dispose()
         peerConnection = null
