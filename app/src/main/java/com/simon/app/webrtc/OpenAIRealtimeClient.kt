@@ -1,6 +1,5 @@
 package com.simon.app.webrtc
 
-import android.media.AudioRecord
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.*
@@ -8,6 +7,7 @@ import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.webrtc.*
+import java.io.IOException
 import java.nio.ByteBuffer
 
 /**
@@ -53,7 +53,6 @@ class OpenAIRealtimeClient(
     private var peerConnection: PeerConnection? = null
     private var dataChannel: DataChannel? = null
     private var localAudioTrack: AudioTrack? = null
-    private var audioRecord: AudioRecord? = null
     
     /**
      * Initiates WebRTC connection to OpenAI's Realtime API.
@@ -68,17 +67,10 @@ class OpenAIRealtimeClient(
      */
     fun connect() {
         scope.launch {
-            try {
-                android.util.Log.d("OpenAIRealtimeClient", "Starting connection...")
-                setupPeerConnection()
-                android.util.Log.d("OpenAIRealtimeClient", "Peer connection setup, creating offer...")
-                createOffer()
-            } catch (e: Exception) {
-                android.util.Log.e("OpenAIRealtimeClient", "Connection error", e)
-                withContext(ioDispatcher) {
-                    listener.onError(e.message ?: "Connection failed")
-                }
-            }
+            android.util.Log.d("OpenAIRealtimeClient", "Starting connection...")
+            setupPeerConnection()
+            android.util.Log.d("OpenAIRealtimeClient", "Peer connection setup, creating offer...")
+            createOffer()
         }
     }
     
@@ -113,33 +105,55 @@ class OpenAIRealtimeClient(
             object : PeerConnection.Observer {
                 // ICE = Interactive Connectivity Establishment
                 // These callbacks handle network path discovery (not used by OpenAI)
-                override fun onIceCandidate(candidate: IceCandidate?) {}
-                override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
-                override fun onSignalingChange(state: PeerConnection.SignalingState?) {}
-                override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {}
+                override fun onIceCandidate(candidate: IceCandidate) {}
+                override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>) {}
+                override fun onSignalingChange(state: PeerConnection.SignalingState) {}
+                override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {}
                 override fun onIceConnectionReceivingChange(receiving: Boolean) {}
-                override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) {}
+                override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {}
+                
+                // Connection state monitoring - important for detecting disconnections
+                override fun onConnectionChange(state: PeerConnection.PeerConnectionState) {
+                    android.util.Log.d("OpenAIRealtimeClient", "Connection state changed to: $state")
+                    when (state) {
+                        PeerConnection.PeerConnectionState.FAILED -> {
+                            scope.launch(ioDispatcher) {
+                                listener.onError("Connection failed")
+                                listener.onSessionEnded()
+                            }
+                        }
+                        PeerConnection.PeerConnectionState.DISCONNECTED -> {
+                            scope.launch(ioDispatcher) {
+                                listener.onSessionEnded()
+                            }
+                        }
+                        PeerConnection.PeerConnectionState.CONNECTED -> {
+                            android.util.Log.d("OpenAIRealtimeClient", "PeerConnection fully connected")
+                        }
+                        else -> {}
+                    }
+                }
                 
                 // Legacy stream callbacks (we use tracks instead)
-                override fun onAddStream(stream: MediaStream?) {}
-                override fun onRemoveStream(stream: MediaStream?) {}
+                override fun onAddStream(stream: MediaStream) {}
+                override fun onRemoveStream(stream: MediaStream) {}
                 
                 // DataChannel created by remote peer (not used - we create our own)
-                override fun onDataChannel(channel: DataChannel?) {}
+                override fun onDataChannel(channel: DataChannel) {}
                 
                 // Renegotiation needed when media changes
                 override fun onRenegotiationNeeded() {}
                 
                 // Legacy track callback
-                override fun onAddTrack(receiver: RtpReceiver?, streams: Array<out MediaStream>?) {}
+                override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) {}
                 
                 /**
                  * Called when remote audio track is received from OpenAI.
                  * This track contains the AI's voice responses.
                  * WebRTC automatically plays this through the device speaker.
                  */
-                override fun onTrack(transceiver: RtpTransceiver?) {
-                    transceiver?.receiver?.track()?.let { track ->
+                override fun onTrack(transceiver: RtpTransceiver) {
+                    transceiver.receiver?.track()?.let { track ->
                         if (track.kind() == MediaStreamTrack.AUDIO_TRACK_KIND) {
                             // Enable the track to start receiving audio
                             track.setEnabled(true)
@@ -245,27 +259,31 @@ class OpenAIRealtimeClient(
         }
         
         peerConnection?.createOffer(object : SdpObserver {
-            override fun onCreateSuccess(sdp: SessionDescription?) {
-                sdp?.let {
-                    // Set our local description - this configures our side of the connection
-                    peerConnection?.setLocalDescription(object : SdpObserver {
-                        override fun onCreateSuccess(p0: SessionDescription?) {}
-                        override fun onSetSuccess() {
-                            // Once local description is set, send offer to OpenAI
-                            scope.launch {
-                                sendOfferToOpenAI(sdp)
-                            }
+            override fun onCreateSuccess(sdp: SessionDescription) {
+                // Set our local description - this configures our side of the connection
+                peerConnection?.setLocalDescription(object : SdpObserver {
+                    // onCreateSuccess/onCreateFailure not needed - we're setting, not creating
+                    override fun onCreateSuccess(p0: SessionDescription) {}
+                    override fun onCreateFailure(p0: String) {}
+                    
+                    override fun onSetSuccess() {
+                        // Once local description is set, send offer to OpenAI
+                        scope.launch {
+                            sendOfferToOpenAI(sdp)
                         }
-                        override fun onCreateFailure(p0: String?) {}
-                        override fun onSetFailure(p0: String?) {}
-                    }, it)
-                }
+                    }
+                    
+                    // onSetFailure rarely happens - would indicate invalid SDP we just created
+                    override fun onSetFailure(p0: String) {}
+                }, sdp)
             }
+            // onSetSuccess/onSetFailure not relevant for createOffer - only for set operations
             override fun onSetSuccess() {}
-            override fun onCreateFailure(error: String?) {
-                listener.onError(error ?: "Failed to create offer")
+            override fun onSetFailure(error: String) {}
+            
+            override fun onCreateFailure(error: String) {
+                listener.onError(error)
             }
-            override fun onSetFailure(error: String?) {}
         }, constraints)
     }
     
@@ -283,54 +301,64 @@ class OpenAIRealtimeClient(
      */
     private suspend fun sendOfferToOpenAI(offer: SessionDescription) {
         withContext(ioDispatcher) {
-            try {
-                // Send SDP offer as HTTP POST with API key authentication
-                val request = Request.Builder()
-                    .url("$baseUrl?model=$MODEL")
-                    .post(offer.description.toRequestBody("application/sdp".toMediaType()))
-                    .addHeader("Authorization", "Bearer $apiKey")
-                    .build()
+            // Send SDP offer as HTTP POST with API key authentication
+            val request = Request.Builder()
+                .url("$baseUrl?model=$MODEL")
+                .post(offer.description.toRequestBody("application/sdp".toMediaType()))
+                .addHeader("Authorization", "Bearer $apiKey")
+                .build()
+            
+            val response = try {
+                httpClient.newCall(request).execute()
+            } catch (e: IOException) {
+                android.util.Log.e("OpenAIRealtimeClient", "Network error", e)
+                listener.onError("Network error: ${e.message}")
+                return@withContext
+            }
+            
+            android.util.Log.d("OpenAIRealtimeClient", "HTTP response code: ${response.code}")
+            if (response.isSuccessful) {
+                // Response body contains OpenAI's SDP answer
+                val responseBody = try {
+                    response.body.string()
+                } catch (e: IOException) {
+                    android.util.Log.e("OpenAIRealtimeClient", "Error reading response", e)
+                    listener.onError("Error reading response: ${e.message}")
+                    return@withContext
+                }
                 
-                val response = httpClient.newCall(request).execute()
+                android.util.Log.d("OpenAIRealtimeClient", "Received SDP answer: ${responseBody.take(200)}...")
+                val answer = SessionDescription(SessionDescription.Type.ANSWER, responseBody)
                 
-                android.util.Log.d("OpenAIRealtimeClient", "HTTP response code: ${response.code}")
-                if (response.isSuccessful) {
-                    // Response body contains OpenAI's SDP answer
-                    val responseBody = response.body.string()
-                    android.util.Log.d("OpenAIRealtimeClient", "Received SDP answer: ${responseBody.take(200)}...")
-                    val answer = SessionDescription(SessionDescription.Type.ANSWER, responseBody)
+                // Set remote description - this completes the WebRTC handshake
+                peerConnection?.setRemoteDescription(object : SdpObserver {
+                    // onCreateSuccess/onCreateFailure not needed - we're setting, not creating
+                    override fun onCreateSuccess(p0: SessionDescription) {}
+                    override fun onCreateFailure(p0: String) {}
                     
-                    // Set remote description - this completes the WebRTC handshake
-                    peerConnection?.setRemoteDescription(object : SdpObserver {
-                        override fun onCreateSuccess(p0: SessionDescription?) {}
-                        override fun onSetSuccess() {
-                            // Connection established! Audio can now flow both ways
-                            android.util.Log.d("OpenAIRealtimeClient", "Remote description set successfully")
-                            scope.launch(ioDispatcher) {
-                                listener.onSessionStarted()
-                            }
+                    override fun onSetSuccess() {
+                        // Connection established! Audio can now flow both ways
+                        android.util.Log.d("OpenAIRealtimeClient", "Remote description set successfully")
+                        scope.launch(ioDispatcher) {
+                            listener.onSessionStarted()
                         }
-                        override fun onCreateFailure(p0: String?) {
-                            android.util.Log.e("OpenAIRealtimeClient", "Failed to create description: $p0")
-                        }
-                        override fun onSetFailure(error: String?) {
-                            android.util.Log.e("OpenAIRealtimeClient", "Failed to set remote description: $error")
-                            scope.launch(ioDispatcher) {
-                                listener.onError(error ?: "Failed to set remote description")
-                            }
-                        }
-                    }, answer)
-                } else {
-                    val errorBody = response.body.string()
-                    android.util.Log.e("OpenAIRealtimeClient", "HTTP error ${response.code}: $errorBody")
-                    withContext(ioDispatcher) {
-                        listener.onError("HTTP ${response.code}")
                     }
+                    
+                    override fun onSetFailure(error: String) {
+                        android.util.Log.e("OpenAIRealtimeClient", "Failed to set remote description: $error")
+                        scope.launch(ioDispatcher) {
+                            listener.onError(error)
+                        }
+                    }
+                }, answer)
+            } else {
+                val errorBody = try {
+                    response.body.string()
+                } catch (_: IOException) {
+                    "Unable to read error response"
                 }
-            } catch (e: Exception) {
-                withContext(ioDispatcher) {
-                    listener.onError(e.message ?: "Network error")
-                }
+                android.util.Log.e("OpenAIRealtimeClient", "HTTP error ${response.code}: $errorBody")
+                listener.onError("HTTP ${response.code}")
             }
         }
     }
@@ -427,44 +455,46 @@ class OpenAIRealtimeClient(
      * These events coordinate the conversation flow and UI updates.
      */
     private fun handleServerEvent(message: String) {
-        try {
-            android.util.Log.d("OpenAIRealtimeClient", "Received server event: $message")
-            val event = gson.fromJson(message, JsonObject::class.java)
-            val type = event.get("type")?.asString ?: return
-            
-            scope.launch(ioDispatcher) {
-                when (type) {
-                    "session.created", "session.updated" -> {
-                        android.util.Log.d("OpenAIRealtimeClient", "Session $type")
-                        // Session configuration accepted by server
-                    }
-                    "input_audio_buffer.speech_started" -> {
-                        // OpenAI detected user started speaking
-                        listener.onSpeechStarted()
-                    }
-                    "input_audio_buffer.speech_stopped" -> {
-                        // OpenAI detected user stopped speaking
-                        listener.onSpeechStopped()
-                    }
-                    "response.created" -> {
-                        // AI is starting to generate/speak response
-                        listener.onResponseStarted()
-                    }
-                    "response.done" -> {
-                        // AI finished speaking
-                        listener.onResponseCompleted()
-                    }
-                    "error" -> {
-                        val errorMessage = event.get("message")?.asString ?: "Unknown error"
-                        val errorCode = event.get("code")?.asString ?: "no_code"
-                        android.util.Log.e("OpenAIRealtimeClient", "Server error - Code: $errorCode, Message: $errorMessage, Full event: $event")
-                        listener.onError(errorMessage)
-                    }
+        android.util.Log.d("OpenAIRealtimeClient", "Received server event: $message")
+        
+        val event = try {
+            gson.fromJson(message, JsonObject::class.java)
+        } catch (e: com.google.gson.JsonSyntaxException) {
+            android.util.Log.e("OpenAIRealtimeClient", "Invalid JSON from server: $message", e)
+            return
+        }
+        
+        val type = event.get("type")?.asString ?: return
+        
+        scope.launch(ioDispatcher) {
+            when (type) {
+                "session.created", "session.updated" -> {
+                    android.util.Log.d("OpenAIRealtimeClient", "Session $type")
+                    // Session configuration accepted by server
+                }
+                "input_audio_buffer.speech_started" -> {
+                    // OpenAI detected user started speaking
+                    listener.onSpeechStarted()
+                }
+                "input_audio_buffer.speech_stopped" -> {
+                    // OpenAI detected user stopped speaking
+                    listener.onSpeechStopped()
+                }
+                "response.created" -> {
+                    // AI is starting to generate/speak response
+                    listener.onResponseStarted()
+                }
+                "response.done" -> {
+                    // AI finished speaking
+                    listener.onResponseCompleted()
+                }
+                "error" -> {
+                    val errorMessage = event.get("message")?.asString ?: "Unknown error"
+                    val errorCode = event.get("code")?.asString ?: "no_code"
+                    android.util.Log.e("OpenAIRealtimeClient", "Server error - Code: $errorCode, Message: $errorMessage, Full event: $event")
+                    listener.onError(errorMessage)
                 }
             }
-        } catch (e: Exception) {
-            android.util.Log.e("OpenAIRealtimeClient", "Error handling server event", e)
-            e.printStackTrace()
         }
     }
     
@@ -496,11 +526,6 @@ class OpenAIRealtimeClient(
      */
     fun disconnect() {
         scope.cancel()
-        
-        // Stop audio capture (though we don't use AudioRecord directly anymore)
-        audioRecord?.stop()
-        audioRecord?.release()
-        audioRecord = null
         
         // Close DataChannel for events
         dataChannel?.close()

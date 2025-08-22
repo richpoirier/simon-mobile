@@ -40,6 +40,12 @@ class OpenAIRealtimeClientIntegrationTest {
     private lateinit var mockAudioSource: AudioSource
     @Mock  
     private lateinit var mockAudioTrack: AudioTrack
+    @Mock
+    private lateinit var mockRtpTransceiver: RtpTransceiver
+    @Mock
+    private lateinit var mockRtpReceiver: RtpReceiver
+    @Mock
+    private lateinit var mockRemoteAudioTrack: MediaStreamTrack
     @Captor
     private lateinit var sdpObserverCaptor: ArgumentCaptor<SdpObserver>
     @Captor
@@ -61,8 +67,10 @@ class OpenAIRealtimeClientIntegrationTest {
         server = MockWebServer()
         server.start()
 
+        // Setup PeerConnectionFactory mock to capture the observer
         `when`(mockPeerConnectionFactory.createPeerConnection(any(PeerConnection.RTCConfiguration::class.java), peerConnectionObserverCaptor.capture()))
             .thenReturn(mockPeerConnection)
+        
         `when`(mockPeerConnection.createDataChannel(anyString(), any(DataChannel.Init::class.java)))
             .thenReturn(mockDataChannel)
         `when`(mockPeerConnectionFactory.createAudioSource(any(MediaConstraints::class.java)))
@@ -74,13 +82,11 @@ class OpenAIRealtimeClientIntegrationTest {
 
         // Mock createOffer to capture the observer
         doAnswer { invocation ->
-            // Return null but capture the observer for later use
             null
         }.`when`(mockPeerConnection).createOffer(sdpObserverCaptor.capture(), any(MediaConstraints::class.java))
 
         // Mock setLocalDescription to capture the observer
         doAnswer { invocation ->
-            // Return null but capture the observer for later use
             null
         }.`when`(mockPeerConnection).setLocalDescription(setLocalDescriptionObserverCaptor.capture(), any(SessionDescription::class.java))
 
@@ -183,11 +189,13 @@ class OpenAIRealtimeClientIntegrationTest {
         // Trigger WebRTC callbacks to make HTTP request happen
         verify(mockPeerConnection).createOffer(any(SdpObserver::class.java), any(MediaConstraints::class.java))
         
+        // The sdpObserverCaptor should have captured the observer
         if (sdpObserverCaptor.allValues.isNotEmpty()) {
             sdpObserverCaptor.value.onCreateSuccess(SessionDescription(SessionDescription.Type.OFFER, "dummy-offer-sdp"))
             
             verify(mockPeerConnection).setLocalDescription(any(SdpObserver::class.java), any(SessionDescription::class.java))
             
+            // The setLocalDescriptionObserverCaptor should have captured the observer
             if (setLocalDescriptionObserverCaptor.allValues.isNotEmpty()) {
                 setLocalDescriptionObserverCaptor.value.onSetSuccess()
             }
@@ -234,7 +242,15 @@ class OpenAIRealtimeClientIntegrationTest {
         val observer = dataChannelObserverCaptor.value
         val ordering = inOrder(mockListener)
 
-        // Act & Assert
+        // Act & Assert - Test session events (these don't call listener methods but should be handled)
+        simulateServerMessage(observer, """{"type": "session.created"}""")
+        testScheduler.advanceUntilIdle()
+        // No listener method called for session.created, but event is logged
+        
+        simulateServerMessage(observer, """{"type": "session.updated"}""")
+        testScheduler.advanceUntilIdle()
+        // No listener method called for session.updated, but event is logged
+
         simulateServerMessage(observer, """{"type": "input_audio_buffer.speech_started"}""")
         testScheduler.advanceUntilIdle()
         ordering.verify(mockListener).onSpeechStarted()
@@ -250,6 +266,106 @@ class OpenAIRealtimeClientIntegrationTest {
         simulateServerMessage(observer, """{"type": "response.done"}""")
         testScheduler.advanceUntilIdle()
         ordering.verify(mockListener).onResponseCompleted()
+    }
+
+    @Test
+    fun onTrack_whenRemoteAudioTrackReceived_enablesTrack() = runTest(testScheduler) {
+        // Arrange
+        server.enqueue(MockResponse().setResponseCode(200).setBody("v=0\r\n"))
+        
+        // Set up the mock transceiver and track
+        `when`(mockRtpTransceiver.receiver).thenReturn(mockRtpReceiver)
+        `when`(mockRtpReceiver.track()).thenReturn(mockRemoteAudioTrack)
+        `when`(mockRemoteAudioTrack.kind()).thenReturn(MediaStreamTrack.AUDIO_TRACK_KIND)
+        
+        // Act
+        client.connect()
+        testScheduler.advanceUntilIdle()
+        
+        // Get the PeerConnection.Observer and simulate receiving a remote track
+        val pcObserver = peerConnectionObserverCaptor.value
+        pcObserver.onTrack(mockRtpTransceiver)
+        
+        // Assert
+        verify(mockRemoteAudioTrack).setEnabled(true)
+    }
+
+    @Test
+    fun onTrack_whenRemoteVideoTrackReceived_doesNotEnableTrack() = runTest(testScheduler) {
+        // Arrange
+        server.enqueue(MockResponse().setResponseCode(200).setBody("v=0\r\n"))
+        
+        // Set up the mock transceiver with a video track
+        `when`(mockRtpTransceiver.receiver).thenReturn(mockRtpReceiver)
+        `when`(mockRtpReceiver.track()).thenReturn(mockRemoteAudioTrack)
+        `when`(mockRemoteAudioTrack.kind()).thenReturn(MediaStreamTrack.VIDEO_TRACK_KIND)
+        
+        // Act
+        client.connect()
+        testScheduler.advanceUntilIdle()
+        
+        // Get the PeerConnection.Observer and simulate receiving a video track
+        val pcObserver = peerConnectionObserverCaptor.value
+        pcObserver.onTrack(mockRtpTransceiver)
+        
+        // Assert - video track should not be enabled
+        verify(mockRemoteAudioTrack, never()).setEnabled(true)
+    }
+
+    @Test
+    fun onTrack_whenReceiverHasNoTrack_doesNotCrash() = runTest(testScheduler) {
+        // Arrange
+        server.enqueue(MockResponse().setResponseCode(200).setBody("v=0\r\n"))
+        
+        // Set up the mock transceiver with no track
+        `when`(mockRtpTransceiver.receiver).thenReturn(mockRtpReceiver)
+        `when`(mockRtpReceiver.track()).thenReturn(null)
+        
+        // Act
+        client.connect()
+        testScheduler.advanceUntilIdle()
+        
+        // Get the PeerConnection.Observer and simulate receiving a transceiver with no track
+        val pcObserver = peerConnectionObserverCaptor.value
+        pcObserver.onTrack(mockRtpTransceiver)
+        
+        // Assert - should handle gracefully, no crash
+        verify(mockRemoteAudioTrack, never()).setEnabled(true)
+    }
+
+    @Test
+    fun sendOfferToOpenAI_whenSetRemoteDescriptionFails_callsOnError() = runTest(testScheduler) {
+        // Arrange
+        server.enqueue(MockResponse().setResponseCode(200).setBody("v=0\r\n"))
+        
+        // Mock setRemoteDescription to call onSetFailure
+        doAnswer { invocation ->
+            val observer = invocation.getArgument<SdpObserver>(0)
+            observer.onSetFailure("Failed to set remote description")
+            null
+        }.`when`(mockPeerConnection).setRemoteDescription(any(SdpObserver::class.java), any(SessionDescription::class.java))
+        
+        // Act
+        client.connect()
+        testScheduler.advanceUntilIdle()
+        
+        // Trigger WebRTC callbacks to make HTTP request happen
+        verify(mockPeerConnection).createOffer(any(SdpObserver::class.java), any(MediaConstraints::class.java))
+        
+        if (sdpObserverCaptor.allValues.isNotEmpty()) {
+            sdpObserverCaptor.value.onCreateSuccess(SessionDescription(SessionDescription.Type.OFFER, "dummy-offer-sdp"))
+            
+            verify(mockPeerConnection).setLocalDescription(any(SdpObserver::class.java), any(SessionDescription::class.java))
+            
+            if (setLocalDescriptionObserverCaptor.allValues.isNotEmpty()) {
+                setLocalDescriptionObserverCaptor.value.onSetSuccess()
+            }
+        }
+        
+        testScheduler.advanceUntilIdle()
+        
+        // Assert
+        verify(mockListener).onError("Failed to set remote description")
     }
 
     @Test
