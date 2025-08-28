@@ -3,6 +3,7 @@ package com.simon.app.audio
 import android.content.Context
 import android.media.AudioManager
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Test
 import org.mockito.Mock
@@ -29,7 +30,7 @@ class AudioPlayerTest {
     @Test
     fun `test AudioPlayer initializes successfully`() = runTest {
         // Verify that AudioPlayer can be created with a context
-        assert(audioPlayer != null)
+        assertNotNull("AudioPlayer should be initialized", audioPlayer)
     }
     
     @Test

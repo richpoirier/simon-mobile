@@ -2,10 +2,13 @@ package com.simon.app.webrtc
 
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -64,6 +67,7 @@ class OpenAIRealtimeClientIntegrationTest {
     @Before
     fun setup() {
         MockitoAnnotations.openMocks(this)
+        Dispatchers.setMain(testDispatcher)
         server = MockWebServer()
         server.start()
 
@@ -113,6 +117,7 @@ class OpenAIRealtimeClientIntegrationTest {
     @After
     fun teardown() {
         server.shutdown()
+        Dispatchers.resetMain()
     }
 
     @Test

@@ -11,26 +11,29 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.simon.app.audio.AudioPlayer
 import com.simon.app.config.ConfigManager
+import com.simon.app.presentation.VoiceSessionPresenter
 import com.simon.app.ui.RippleView
-import com.simon.app.webrtc.OpenAIRealtimeClient
-import kotlinx.coroutines.*
 import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.DefaultVideoEncoderFactory
 import org.webrtc.EglBase
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.audio.JavaAudioDeviceModule
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 
-class VoiceSessionActivity : AppCompatActivity(), OpenAIRealtimeClient.Listener {
+class VoiceSessionActivity : AppCompatActivity() {
 
     private lateinit var rippleView: RippleView
     private lateinit var closeButton: ImageButton
     private lateinit var audioPlayer: AudioPlayer
-    private lateinit var realtimeClient: OpenAIRealtimeClient
-    private lateinit var configManager: ConfigManager
+    private lateinit var presenter: VoiceSessionPresenter
 
-    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var peerConnectionFactory: PeerConnectionFactory? = null
     private var eglBase: EglBase? = null
+    private val activityScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,81 +55,91 @@ class VoiceSessionActivity : AppCompatActivity(), OpenAIRealtimeClient.Listener 
 
     private fun initializeServices() {
         try {
-            configManager = ConfigManager(this)
             audioPlayer = AudioPlayer(this)
-
-            // WebRTC requires a graphics context for its video components, even in an audio-only app.
-            // EglBase provides this necessary handle to the device's graphics system.
-            PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(this).createInitializationOptions())
-            eglBase = EglBase.create()
             
-            // This factory is responsible for creating PeerConnection objects. We create it here
-            // so we can inject it into the OpenAIRealtimeClient. This makes the client more
-            // testable, as we can provide a mock factory in our tests.
-            val audioDeviceModule = JavaAudioDeviceModule.builder(this)
-                .setUseHardwareAcousticEchoCanceler(true)
-                .setUseHardwareNoiseSuppressor(true)
-                .setAudioRecordErrorCallback(object : JavaAudioDeviceModule.AudioRecordErrorCallback {
-                    override fun onWebRtcAudioRecordInitError(errorMessage: String?) { Log.e("VoiceSessionActivity", "AudioRecordInitError: $errorMessage") }
-                    override fun onWebRtcAudioRecordStartError(errorCode: JavaAudioDeviceModule.AudioRecordStartErrorCode?, errorMessage: String?) { Log.e("VoiceSessionActivity", "AudioRecordStartError: $errorMessage") }
-                    override fun onWebRtcAudioRecordError(errorMessage: String?) { Log.e("VoiceSessionActivity", "AudioRecordError: $errorMessage") }
-                })
-                .setAudioTrackErrorCallback(object : JavaAudioDeviceModule.AudioTrackErrorCallback {
-                    override fun onWebRtcAudioTrackInitError(errorMessage: String?) { Log.e("VoiceSessionActivity", "AudioTrackInitError: $errorMessage") }
-                    override fun onWebRtcAudioTrackStartError(errorCode: JavaAudioDeviceModule.AudioTrackStartErrorCode?, errorMessage: String?) { Log.e("VoiceSessionActivity", "AudioTrackStartError: $errorMessage") }
-                    override fun onWebRtcAudioTrackError(errorMessage: String?) { Log.e("VoiceSessionActivity", "AudioTrackError: $errorMessage") }
-                })
-                .createAudioDeviceModule()
-
-            peerConnectionFactory = PeerConnectionFactory.builder()
-                .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase?.eglBaseContext))
-                .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase?.eglBaseContext, true, true))
-                .setAudioDeviceModule(audioDeviceModule)
-                .createPeerConnectionFactory()
-
-            realtimeClient = OpenAIRealtimeClient(
-                apiKey = configManager.getOpenAIApiKey(),
-                listener = this,
-                peerConnectionFactory = peerConnectionFactory!!
+            // Initialize WebRTC components
+            initializeWebRTC()
+            
+            // Create presenter with callbacks for UI updates
+            val configManager = ConfigManager(this)
+            val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+            
+            presenter = VoiceSessionPresenter(
+                configManager = configManager,
+                audioManager = audioManager,
+                onSpeakerEnabled = { /* Speaker enabled by presenter */ },
+                onSessionStarted = { 
+                    // Launch coroutine to play the ready tone
+                    activityScope.launch {
+                        audioPlayer.playReadyTone()
+                    }
+                },
+                onSessionError = { error ->
+                    runOnUiThread {
+                        Toast.makeText(this, "Error: $error", Toast.LENGTH_LONG).show()
+                        finish()
+                    }
+                },
+                onSpeechStarted = { 
+                    runOnUiThread { rippleView.startListeningAnimation() }
+                },
+                onSpeechStopped = { /* No UI update needed */ },
+                onResponseStarted = { 
+                    runOnUiThread { rippleView.startSpeakingAnimation() }
+                },
+                onResponseCompleted = { 
+                    runOnUiThread { rippleView.startListeningAnimation() }
+                },
+                onSessionEnded = { 
+                    runOnUiThread { finish() }
+                }
             )
+            
+            // Initialize presenter with PeerConnectionFactory
+            peerConnectionFactory?.let {
+                presenter.initialize(it)
+            }
+            
         } catch (e: Exception) {
             Log.e("VoiceSessionActivity", "Error initializing services", e)
             Toast.makeText(this, "Failed to initialize: ${e.message}", Toast.LENGTH_LONG).show()
             finish()
         }
     }
+    
+    private fun initializeWebRTC() {
+        // WebRTC requires a graphics context for its video components, even in an audio-only app.
+        // EglBase provides this necessary handle to the device's graphics system.
+        PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(this).createInitializationOptions())
+        eglBase = EglBase.create()
+        
+        // This factory is responsible for creating PeerConnection objects.
+        val audioDeviceModule = JavaAudioDeviceModule.builder(this)
+            .setUseHardwareAcousticEchoCanceler(true)
+            .setUseHardwareNoiseSuppressor(true)
+            .setAudioRecordErrorCallback(object : JavaAudioDeviceModule.AudioRecordErrorCallback {
+                override fun onWebRtcAudioRecordInitError(errorMessage: String?) { Log.e("VoiceSessionActivity", "AudioRecordInitError: $errorMessage") }
+                override fun onWebRtcAudioRecordStartError(errorCode: JavaAudioDeviceModule.AudioRecordStartErrorCode?, errorMessage: String?) { Log.e("VoiceSessionActivity", "AudioRecordStartError: $errorMessage") }
+                override fun onWebRtcAudioRecordError(errorMessage: String?) { Log.e("VoiceSessionActivity", "AudioRecordError: $errorMessage") }
+            })
+            .setAudioTrackErrorCallback(object : JavaAudioDeviceModule.AudioTrackErrorCallback {
+                override fun onWebRtcAudioTrackInitError(errorMessage: String?) { Log.e("VoiceSessionActivity", "AudioTrackInitError: $errorMessage") }
+                override fun onWebRtcAudioTrackStartError(errorCode: JavaAudioDeviceModule.AudioTrackStartErrorCode?, errorMessage: String?) { Log.e("VoiceSessionActivity", "AudioTrackStartError: $errorMessage") }
+                override fun onWebRtcAudioTrackError(errorMessage: String?) { Log.e("VoiceSessionActivity", "AudioTrackError: $errorMessage") }
+            })
+            .createAudioDeviceModule()
+
+        peerConnectionFactory = PeerConnectionFactory.builder()
+            .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase?.eglBaseContext))
+            .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase?.eglBaseContext, true, true))
+            .setAudioDeviceModule(audioDeviceModule)
+            .createPeerConnectionFactory()
+    }
 
     private fun startVoiceSession() {
-        scope.launch {
-            try {
-                audioPlayer.playReadyTone()
-                rippleView.startListeningAnimation()
-                realtimeClient.connect()
-            } catch (e: Exception) {
-                onError("Error starting voice session: ${e.message}")
-            }
-        }
+        rippleView.startListeningAnimation()
+        presenter.startListening()
     }
-
-    override fun onSessionStarted() {
-        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-        audioManager.isSpeakerphoneOn = true
-    }
-
-    override fun onSpeechStarted() { runOnUiThread { rippleView.startListeningAnimation() } }
-    override fun onSpeechStopped() {}
-    override fun onResponseStarted() { runOnUiThread { rippleView.startSpeakingAnimation() } }
-    override fun onResponseCompleted() { runOnUiThread { rippleView.startListeningAnimation() } }
-
-    override fun onError(error: String) {
-        runOnUiThread {
-            Toast.makeText(this, "Error: $error", Toast.LENGTH_LONG).show()
-            finish()
-        }
-    }
-
-    override fun onSessionEnded() { runOnUiThread { finish() } }
 
     private fun hideSystemUI() {
         window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
@@ -139,17 +152,13 @@ class VoiceSessionActivity : AppCompatActivity(), OpenAIRealtimeClient.Listener 
 
     override fun onDestroy() {
         super.onDestroy()
-        scope.cancel()
-        realtimeClient.disconnect()
+        activityScope.cancel()
+        presenter.cleanup()
         audioPlayer.release()
         
         // It's crucial to release the factory and graphics context to free up
         // native resources and prevent memory leaks.
         peerConnectionFactory?.dispose()
         eglBase?.release()
-        
-        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.mode = AudioManager.MODE_NORMAL
-        audioManager.isSpeakerphoneOn = false
     }
 }
