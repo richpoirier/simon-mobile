@@ -1,7 +1,5 @@
 package com.simon.app
 
-import android.app.assist.AssistContent
-import android.app.assist.AssistStructure
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -18,6 +16,14 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
     override fun onShow(args: Bundle?, showFlags: Int) {
         super.onShow(args, showFlags)
         
+        // TODO: Investigate proper assistant architecture - current approach launches a separate
+        // activity and immediately closes the session, which seems like a workaround.
+        // Consider either:
+        // 1. Using the session's own UI (onCreateContentView) instead of launching an activity
+        // 2. Keeping the session alive and communicating with the activity
+        // 3. Using the session's voice interaction capabilities directly
+        // The 500ms delay hack suggests we're fighting the framework instead of working with it.
+        
         // Launch the voice session activity
         val intent = Intent(context, VoiceSessionActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -30,13 +36,5 @@ class VoiceAssistantSession(private val context: Context) : VoiceInteractionSess
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             finish()
         }, 500)
-    }
-    
-    override fun onHandleAssist(
-        bundle: Bundle?,
-        assistStructure: AssistStructure?,
-        assistContent: AssistContent?
-    ) {
-        // Handle assist data if needed
     }
 }
