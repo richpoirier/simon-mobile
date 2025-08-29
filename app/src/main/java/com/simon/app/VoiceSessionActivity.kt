@@ -37,6 +37,15 @@ class VoiceSessionActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_voice_session)
 
+        // Allow activity to show on lock screen and turn on the screen
+        setShowWhenLocked(true)
+        setTurnScreenOn(true)
+        
+        // Optional: Dismiss keyguard to show activity above lock screen
+        // Note: This shows the activity but doesn't unlock the device
+        val keyguardManager = getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager
+        keyguardManager.requestDismissKeyguard(this, null)
+        
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemUI()
 

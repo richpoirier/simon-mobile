@@ -76,7 +76,4 @@ class VoiceSessionActivityTest {
         val closeButton = activity.findViewById<ImageButton>(R.id.close_button)
         assert(closeButton != null)
     }
-
-
-
 }
