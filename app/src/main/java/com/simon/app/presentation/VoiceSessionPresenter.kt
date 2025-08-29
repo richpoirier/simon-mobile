@@ -81,7 +81,12 @@ class VoiceSessionPresenter(
     private fun enableSpeaker() {
         audioManager?.apply {
             mode = AudioManager.MODE_IN_COMMUNICATION
-            isSpeakerphoneOn = true
+            val speakerDevice = availableCommunicationDevices.firstOrNull { 
+                it.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+            }
+            speakerDevice?.let {
+                setCommunicationDevice(it)
+            }
         }
         onSpeakerEnabled()
     }
@@ -97,7 +102,7 @@ class VoiceSessionPresenter(
         // Reset audio settings
         audioManager?.apply {
             mode = AudioManager.MODE_NORMAL
-            isSpeakerphoneOn = false
+            clearCommunicationDevice()
         }
     }
     

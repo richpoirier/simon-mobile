@@ -1,5 +1,6 @@
 package com.simon.app.presentation
 
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import com.simon.app.config.ConfigManager
 import kotlinx.coroutines.Dispatchers
@@ -13,7 +14,6 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.mockito.Mock
-import org.mockito.Mockito.*
 import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.any
 import org.mockito.kotlin.verify
@@ -28,6 +28,9 @@ class VoiceSessionPresenterTest {
     
     @Mock
     private lateinit var mockAudioManager: AudioManager
+    
+    @Mock
+    private lateinit var mockAudioDevice: AudioDeviceInfo
     
     @Mock
     private lateinit var mockPeerConnectionFactory: PeerConnectionFactory
@@ -49,6 +52,10 @@ class VoiceSessionPresenterTest {
     fun setup() {
         MockitoAnnotations.openMocks(this)
         Dispatchers.setMain(testDispatcher)
+        
+        // Setup audio device mock
+        whenever(mockAudioDevice.type).thenReturn(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+        whenever(mockAudioManager.availableCommunicationDevices).thenReturn(listOf(mockAudioDevice))
         
         // Reset callback flags
         speakerEnabledCalled = false
@@ -89,7 +96,7 @@ class VoiceSessionPresenterTest {
         
         // Assert
         verify(mockAudioManager).mode = AudioManager.MODE_IN_COMMUNICATION
-        verify(mockAudioManager).isSpeakerphoneOn = true
+        verify(mockAudioManager).setCommunicationDevice(any())
         assertTrue("Speaker enabled callback should be called", speakerEnabledCalled)
         assertNotNull("OpenAI client should be initialized", presenter)
     }
@@ -105,7 +112,7 @@ class VoiceSessionPresenterTest {
         // Assert
         assertEquals("API key not configured", sessionErrorMessage)
         verify(mockAudioManager).mode = AudioManager.MODE_IN_COMMUNICATION
-        verify(mockAudioManager).isSpeakerphoneOn = true
+        verify(mockAudioManager).setCommunicationDevice(any())
     }
     
     @Test
@@ -191,7 +198,7 @@ class VoiceSessionPresenterTest {
         // Assert
         assertFalse("Should not be listening", presenter.isListening())
         verify(mockAudioManager).mode = AudioManager.MODE_NORMAL
-        verify(mockAudioManager, times(2)).isSpeakerphoneOn = any() // Once true, once false
+        verify(mockAudioManager).clearCommunicationDevice()
     }
     
     @Test
