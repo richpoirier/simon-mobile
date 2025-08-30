@@ -19,7 +19,6 @@ import org.webrtc.audio.JavaAudioDeviceModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
 
 class VoiceSessionActivity : AppCompatActivity() {
@@ -76,9 +75,10 @@ class VoiceSessionActivity : AppCompatActivity() {
                 audioManager = audioManager,
                 onSpeakerEnabled = { /* Speaker enabled by presenter */ },
                 onSessionStarted = { 
-                    // Launch coroutine to play the ready tone
-                    activityScope.launch {
-                        audioPlayer.playReadyTone()
+                    // Visual feedback when connected - the RippleView will handle this
+                    runOnUiThread {
+                        rippleView.setConnected(true)
+                        rippleView.startIdleAnimation()
                     }
                 },
                 onSessionError = { error ->
@@ -90,12 +90,14 @@ class VoiceSessionActivity : AppCompatActivity() {
                 onSpeechStarted = { 
                     runOnUiThread { rippleView.startListeningAnimation() }
                 },
-                onSpeechStopped = { /* No UI update needed */ },
+                onSpeechStopped = { 
+                    runOnUiThread { rippleView.startIdleAnimation() }
+                },
                 onResponseStarted = { 
                     runOnUiThread { rippleView.startSpeakingAnimation() }
                 },
                 onResponseCompleted = { 
-                    runOnUiThread { rippleView.startListeningAnimation() }
+                    runOnUiThread { rippleView.startIdleAnimation() }
                 },
                 onSessionEnded = { 
                     runOnUiThread { finish() }
@@ -144,7 +146,8 @@ class VoiceSessionActivity : AppCompatActivity() {
     }
 
     private fun startVoiceSession() {
-        rippleView.startListeningAnimation()
+        // Start in disconnected state with static dark circle
+        rippleView.setConnected(false)
         presenter.startListening()
     }
 

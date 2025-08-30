@@ -56,7 +56,6 @@ app/src/main/java/com/simon/app/
 │   └── RippleView.kt
 ├── webrtc/               # WebRTC and OpenAI integration
 │   └── OpenAIRealtimeClient.kt
-├── MainActivity.kt       # Main launcher activity
 ├── VoiceAssistantService.kt       # System voice service
 ├── VoiceAssistantSession.kt       # Voice session handler
 ├── VoiceAssistantSessionService.kt # Session service
@@ -74,6 +73,24 @@ The app requires:
 
 ## Development
 
+### SDK Configuration
+
+#### Windows (Android Studio)
+Android Studio will automatically create a `local.properties` file with your SDK path.
+
+#### WSL/Linux
+Set the `ANDROID_SDK_ROOT` environment variable:
+```bash
+export ANDROID_SDK_ROOT=/path/to/your/android/sdk
+```
+
+Add to your `~/.bashrc` or `~/.zshrc` to make it permanent:
+```bash
+echo 'export ANDROID_SDK_ROOT=/path/to/your/android/sdk' >> ~/.bashrc
+```
+
+### Build Commands
+
 Run tests:
 ```bash
 ./gradlew test
@@ -88,14 +105,6 @@ Clean and rebuild:
 ```bash
 ./gradlew clean assembleDebug
 ```
-
-### Development on WSL
-
-If you're developing on WSL (Windows Subsystem for Linux), you may encounter issues with Android SDK build tools. To resolve:
-
-1. Install Android Studio on Windows (not WSL)
-2. Use Android Studio's SDK Manager to install Build Tools 36.0.0
-3. Either develop in Android Studio directly, or ensure your WSL `local.properties` points to the Windows SDK path
 
 ## Troubleshooting
 

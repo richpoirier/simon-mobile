@@ -17,4 +17,10 @@
     <color name="white_alpha_50">#80FFFFFF</color>
     <color name="gradient_start">#1A237E</color>
     <color name="gradient_end">#000000</color>
+    
+    <!-- Ripple animation colors -->
+    <color name="ripple_disconnected">#2C3E50</color>
+    <color name="ripple_connected">#4A90E2</color>
+    <color name="ripple_listening_active">#5BA0F2</color>
+    <color name="ripple_speaking">#7B68EE</color>
 </resources>
