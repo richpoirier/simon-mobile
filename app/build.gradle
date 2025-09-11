@@ -54,17 +54,17 @@ dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
     implementation 'androidx.core:core-ktx:1.17.0'
     implementation 'androidx.appcompat:appcompat:1.7.1'
-    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'com.google.android.material:material:1.13.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
     
     // WebRTC
-    implementation 'io.github.webrtc-sdk:android:137.7151.03'
+    implementation 'io.github.webrtc-sdk:android:137.7151.04'
     
     // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
     
     // JSON
-    implementation 'com.google.code.gson:gson:2.13.1'
+    implementation 'com.google.code.gson:gson:2.13.2'
     
     // HTTP Client
     implementation 'com.squareup.okhttp3:okhttp:5.1.0'
