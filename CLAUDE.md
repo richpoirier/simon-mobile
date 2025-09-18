@@ -100,3 +100,4 @@ To work as default assistant:
 - Tests: `/app/src/test/java/com/simon/app/`
 - Resources: `/app/src/main/res/`
 - Voice interaction config: `/app/src/main/res/xml/voice_interaction_service.xml`
+- Always removed unused imports and properties

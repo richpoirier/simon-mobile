@@ -1,6 +1,7 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 apply plugin: 'jacoco'
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
 android {
     compileSdk = 36
@@ -38,6 +39,14 @@ android {
     
     namespace = 'com.simon.app'
     
+    buildFeatures {
+        compose = true
+    }
+    
+    composeOptions {
+        kotlinCompilerExtensionVersion = '1.5.8'
+    }
+    
     testOptions {
         unitTests {
             includeAndroidResources = true
@@ -56,6 +65,17 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.1'
     implementation 'com.google.android.material:material:1.13.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    
+    // Jetpack Compose
+    implementation platform('androidx.compose:compose-bom:2025.09.00')
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-graphics'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.activity:activity-compose:1.11.0'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
     
     // WebRTC
     implementation 'io.github.webrtc-sdk:android:137.7151.04'

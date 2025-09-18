@@ -4,13 +4,17 @@ import android.media.AudioManager
 import android.os.Bundle
 import android.util.Log
 import android.view.WindowManager
-import android.widget.ImageButton
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import androidx.compose.runtime.LaunchedEffect
 import com.simon.app.audio.AudioPlayer
 import com.simon.app.config.ConfigManager
 import com.simon.app.presentation.VoiceSessionPresenter
-import com.simon.app.ui.RippleView
+import com.simon.app.ui.AudioVisualizerScreen
+import com.simon.app.ui.VoiceSessionViewModel
+import com.simon.app.ui.theme.SimonTheme
 import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.DefaultVideoEncoderFactory
 import org.webrtc.EglBase
@@ -21,10 +25,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 
-class VoiceSessionActivity : AppCompatActivity() {
+class VoiceSessionActivity : ComponentActivity() {
 
-    private lateinit var rippleView: RippleView
-    private lateinit var closeButton: ImageButton
+    private val viewModel: VoiceSessionViewModel by viewModels()
     private lateinit var audioPlayer: AudioPlayer
     private lateinit var presenter: VoiceSessionPresenter
 
@@ -34,7 +37,6 @@ class VoiceSessionActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_voice_session)
 
         // Allow activity to show on lock screen and turn on the screen
         setShowWhenLocked(true)
@@ -46,17 +48,22 @@ class VoiceSessionActivity : AppCompatActivity() {
         keyguardManager.requestDismissKeyguard(this, null)
         
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        hideSystemUI()
 
-        setupViews()
         initializeServices()
-        startVoiceSession()
-    }
 
-    private fun setupViews() {
-        rippleView = findViewById(R.id.ripple_view)
-        closeButton = findViewById(R.id.close_button)
-        closeButton.setOnClickListener { finish() }
+        setContent {
+            SimonTheme {
+                AudioVisualizerScreen(
+                    viewModel = viewModel,
+                    onCloseClick = { finish() }
+                )
+
+                // Start voice session when ready
+                LaunchedEffect(Unit) {
+                    startVoiceSession()
+                }
+            }
+        }
     }
 
     private fun initializeServices() {
@@ -75,29 +82,28 @@ class VoiceSessionActivity : AppCompatActivity() {
                 audioManager = audioManager,
                 onSpeakerEnabled = { /* Speaker enabled by presenter */ },
                 onSessionStarted = { 
-                    // Visual feedback when connected - the RippleView will handle this
                     runOnUiThread {
-                        rippleView.setConnected(true)
-                        rippleView.startIdleAnimation()
+                        viewModel.setConnected(true)
                     }
                 },
                 onSessionError = { error ->
                     runOnUiThread {
+                        viewModel.setError(error)
                         Toast.makeText(this, "Error: $error", Toast.LENGTH_LONG).show()
                         finish()
                     }
                 },
                 onSpeechStarted = { 
-                    runOnUiThread { rippleView.startListeningAnimation() }
+                    runOnUiThread { viewModel.setUserSpeaking(true) }
                 },
                 onSpeechStopped = { 
-                    runOnUiThread { rippleView.startIdleAnimation() }
+                    runOnUiThread { viewModel.setUserSpeaking(false) }
                 },
-                onResponseStarted = { 
-                    runOnUiThread { rippleView.startSpeakingAnimation() }
+                onResponseStarted = {
+                    // No UI change needed when assistant starts speaking
                 },
-                onResponseCompleted = { 
-                    runOnUiThread { rippleView.startIdleAnimation() }
+                onResponseCompleted = {
+                    // No UI change needed when assistant stops speaking
                 },
                 onSessionEnded = { 
                     runOnUiThread { finish() }
@@ -146,8 +152,8 @@ class VoiceSessionActivity : AppCompatActivity() {
     }
 
     private fun startVoiceSession() {
-        // Start in disconnected state with static dark circle
-        rippleView.setConnected(false)
+        // Start in disconnected state
+        viewModel.setConnected(false)
         presenter.startListening()
     }
 
@@ -155,6 +161,13 @@ class VoiceSessionActivity : AppCompatActivity() {
         window.insetsController?.let {
             it.hide(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
             it.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            hideSystemUI()
         }
     }
 
