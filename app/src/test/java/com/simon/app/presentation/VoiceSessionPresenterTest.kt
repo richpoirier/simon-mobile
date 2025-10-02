@@ -39,7 +39,6 @@ class VoiceSessionPresenterTest {
     private val testDispatcher = StandardTestDispatcher()
     
     // Callback spies
-    private var speakerEnabledCalled = false
     private var sessionStartedCalled = false
     private var sessionErrorMessage: String? = null
     private var speechStartedCalled = false
@@ -58,7 +57,6 @@ class VoiceSessionPresenterTest {
         whenever(mockAudioManager.availableCommunicationDevices).thenReturn(listOf(mockAudioDevice))
         
         // Reset callback flags
-        speakerEnabledCalled = false
         sessionStartedCalled = false
         sessionErrorMessage = null
         speechStartedCalled = false
@@ -70,7 +68,6 @@ class VoiceSessionPresenterTest {
         presenter = VoiceSessionPresenter(
             configManager = mockConfigManager,
             audioManager = mockAudioManager,
-            onSpeakerEnabled = { speakerEnabledCalled = true },
             onSessionStarted = { sessionStartedCalled = true },
             onSessionError = { error -> sessionErrorMessage = error },
             onSpeechStarted = { speechStartedCalled = true },
@@ -97,8 +94,7 @@ class VoiceSessionPresenterTest {
         // Assert
         verify(mockAudioManager).mode = AudioManager.MODE_IN_COMMUNICATION
         verify(mockAudioManager).setCommunicationDevice(any())
-        assertTrue("Speaker enabled callback should be called", speakerEnabledCalled)
-        assertNotNull("OpenAI client should be initialized", presenter)
+        // Client is initialized internally
     }
     
     @Test
@@ -120,8 +116,7 @@ class VoiceSessionPresenterTest {
         // Arrange
         presenter = VoiceSessionPresenter(
             configManager = mockConfigManager,
-            audioManager = null,
-            onSpeakerEnabled = { speakerEnabledCalled = true }
+            audioManager = null
         )
         whenever(mockConfigManager.getOpenAIApiKey()).thenReturn("test-api-key")
         
@@ -129,8 +124,7 @@ class VoiceSessionPresenterTest {
         presenter.initialize(mockPeerConnectionFactory)
         
         // Assert
-        assertTrue("Speaker enabled callback should be called", speakerEnabledCalled)
-        // No crash should occur
+        // No crash should occur - AudioManager is optional
     }
     
     @Test
