@@ -1,12 +1,9 @@
 Realtime conversations
-
-Beta
-
-==============================
+======================
 
 Learn how to manage Realtime speech-to-speech conversations.
 
-Once you have connected to the Realtime API through either [WebRTC](/docs/guides/realtime-webrtc) or [WebSocket](/docs/guides/realtime-websocket), you can call a Realtime model (such as [gpt-4o-realtime-preview](/docs/models/gpt-4o-realtime-preview)) to have speech-to-speech conversations. Doing so will require you to **send client events** to initiate actions, and **listen for server events** to respond to actions taken by the Realtime API.
+Once you have connected to the Realtime API through either [WebRTC](/docs/guides/realtime-webrtc) or [WebSocket](/docs/guides/realtime-websocket), you can call a Realtime model (such as [gpt-realtime](/docs/models/gpt-realtime)) to have speech-to-speech conversations. Doing so will require you to **send client events** to initiate actions, and **listen for server events** to respond to actions taken by the Realtime API.
 
 This guide will walk through the event flows required to use model capabilities like audio and text generation and function calling, and how to think about the state of a Realtime Session.
 
@@ -46,7 +43,37 @@ Update the system instructions used by the model in this session
 const event = {
   type: "session.update",
   session: {
-    instructions: "Never use the word 'moist' in your responses!"
+      type: "realtime",
+      model: "gpt-realtime",
+      // Lock the output to audio (set to ["text"] if you want text without audio)
+      output_modalities: ["audio"],
+      audio: {
+        input: {
+          format: {
+            type: "audio/pcm",
+            rate: 24000,
+          },
+          turn_detection: {
+            type: "semantic_vad"
+          }
+        },
+        output: {
+          format: {
+            type: "audio/pcm",
+          },
+          voice: "marin",
+        }
+      },
+      // Use a server-stored prompt by ID. Optionally pin a version and pass variables.
+      prompt: {
+        id: "pmpt_123",          // your stored prompt ID
+        version: "89",           // optional: pin a specific version
+        variables: {
+          city: "Paris"          // example variable used by your prompt
+        }
+      },
+      // You can still set direct session fields; these override prompt fields if they overlap:
+      instructions: "Speak clearly and briefly. Confirm understanding before taking actions."
   },
 };
 
@@ -57,8 +84,38 @@ dataChannel.send(JSON.stringify(event));
 ```python
 event = {
     "type": "session.update",
-    "session": {
-        "instructions": "Never use the word 'moist' in your responses!"
+    session: {
+      type: "realtime",
+      model: "gpt-realtime",
+      # Lock the output to audio (add "text" if you also want text)
+      output_modalities: ["audio"],
+      audio: {
+        input: {
+          format: {
+            type: "audio/pcm",
+            rate: 24000,
+          },
+          turn_detection: {
+            type: "semantic_vad"
+          }
+        },
+        output: {
+          format: {
+            type: "audio/pcmu",
+          },
+          voice: "marin",
+        }
+      },
+      # Use a server-stored prompt by ID. Optionally pin a version and pass variables.
+      prompt: {
+        id: "pmpt_123",          // your stored prompt ID
+        version: "89",           // optional: pin a specific version
+        variables: {
+          city: "Paris"          // example variable used by your prompt
+        }
+      },
+      # You can still set direct session fields; these override prompt fields if they overlap:
+      instructions: "Speak clearly and briefly. Confirm understanding before taking actions."
     }
 }
 ws.send(json.dumps(event))
@@ -122,7 +179,7 @@ Generate a text-only response
 const event = {
   type: "response.create",
   response: {
-    modalities: [ "text" ]
+    output_modalities: [ "text" ]
   },
 };
 
@@ -134,7 +191,7 @@ dataChannel.send(JSON.stringify(event));
 event = {
     "type": "response.create",
     "response": {
-        "modalities": [ "text" ]
+        "output_modalities": [ "text" ]
     }
 }
 ws.send(json.dumps(event))
@@ -166,10 +223,10 @@ def on_message(ws, message):
         print(server_event.response.output[0])
 ```
 
-While the model response is being generated, the server will emit a number of lifecycle events during the process. You can listen for these events, such as [`response.text.delta`](/docs/api-reference/realtime-server-events/response/text/delta), to provide realtime feedback to users as the response is generated. A full listing of the events emitted by there server are found below under **related server events**. They are provided in the rough order of when they are emitted, along with relevant client-side events for text generation.
+While the model response is being generated, the server will emit a number of lifecycle events during the process. You can listen for these events, such as [`response.output_text.delta`](/docs/api-reference/realtime-server-events/response/output_text/delta), to provide realtime feedback to users as the response is generated. A full listing of the events emitted by there server are found below under **related server events**. They are provided in the rough order of when they are emitted, along with relevant client-side events for text generation.
 
 ||
-|conversation.item.createresponse.create|conversation.item.createdresponse.createdresponse.output_item.addedresponse.content_part.addedresponse.text.deltaresponse.text.doneresponse.content_part.doneresponse.output_item.doneresponse.donerate_limits.updated|
+|conversation.item.createresponse.create|conversation.item.addedconversation.item.doneresponse.createdresponse.output_item.addedresponse.content_part.addedresponse.output_text.deltaresponse.output_text.doneresponse.content_part.doneresponse.output_item.doneresponse.donerate_limits.updated|
 
 Audio inputs and outputs
 ------------------------
@@ -182,7 +239,7 @@ Realtime sessions can be configured to use one of several built‑in voices when
 
 ### Handling audio with WebRTC
 
-If you are connecting to the Realtime API using WebRTC, the Realtime API is acting as a [peer connection](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection) to your client. Audio output from the model is delivered to your client as a [remote media stream](hhttps://developer.mozilla.org/en-US/docs/Web/API/MediaStream). Audio input to the model is collected using audio devices ([`getUserMedia`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)), and media streams are added as tracks to to the peer connection.
+If you are connecting to the Realtime API using WebRTC, the Realtime API is acting as a [peer connection](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection) to your client. Audio output from the model is delivered to your client as a remote media stream. Audio input to the model is collected using audio devices ([`getUserMedia`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)), and media streams are added as tracks to to the peer connection.
 
 The example code from the [WebRTC connection guide](/docs/guides/realtime-webrtc) shows a basic example of configuring both local and remote audio using browser APIs:
 
@@ -193,11 +250,11 @@ const pc = new RTCPeerConnection();
 // Set up to play remote audio from the model
 const audioEl = document.createElement("audio");
 audioEl.autoplay = true;
-pc.ontrack = e => audioEl.srcObject = e.streams[0];
+pc.ontrack = (e) => (audioEl.srcObject = e.streams[0]);
 
 // Add local audio track for microphone input in the browser
 const ms = await navigator.mediaDevices.getUserMedia({
-  audio: true
+    audio: true,
 });
 pc.addTrack(ms.getTracks()[0]);
 ```
@@ -214,7 +271,7 @@ However, WebRTC clients still receive a number of server-sent lifecycle events a
 
 *   When input is sent over the local media track, you will receive [`input_audio_buffer.speech_started`](/docs/api-reference/realtime-server-events/input_audio_buffer/speech_started) events from the server.
 *   When local audio input stops, you'll receive the [`input_audio_buffer.speech_stopped`](/docs/api-reference/realtime-server-events/input_audio_buffer/speech_started) event.
-*   You'll receive [delta events for the in-progress audio transcript](/docs/api-reference/realtime-server-events/response/audio_transcript/delta).
+*   You'll receive [delta events for the in-progress audio transcript](/docs/api-reference/realtime-server-events/response/output_audio_transcript/delta).
 *   You'll receive a [`response.done`](/docs/api-reference/realtime-server-events/response/done) event when the model has transcribed and completed sending a response.
 
 Manipulating WebRTC APIs for media streams may give you all the control you need. However, it may occasionally be necessary to use lower-level interfaces for audio input and output. Refer to the WebSockets section below for more information and a listing of events required for granular audio input handling.
@@ -228,7 +285,7 @@ The events below are given in lifecycle order, though some events (like the `del
 ||
 |Session initialization|session.update|session.createdsession.updated|
 |User audio input|conversation.item.create  (send whole audio message)input_audio_buffer.append  (stream audio in chunks)input_audio_buffer.commit  (used when VAD is disabled)response.create  (used when VAD is disabled)|input_audio_buffer.speech_startedinput_audio_buffer.speech_stoppedinput_audio_buffer.committed|
-|Server audio output|input_audio_buffer.clear  (used when VAD is disabled)|conversation.item.createdresponse.createdresponse.output_item.createdresponse.content_part.addedresponse.audio.deltaresponse.audio_transcript.deltaresponse.text.deltaresponse.audio.doneresponse.audio_transcript.doneresponse.text.doneresponse.content_part.doneresponse.output_item.doneresponse.donerate_limits.updated|
+|Server audio output|input_audio_buffer.clear  (used when VAD is disabled)|conversation.item.addedconversation.item.doneresponse.createdresponse.output_item.createdresponse.content_part.addedresponse.output_audio.deltaresponse.output_audio.doneresponse.output_audio_transcript.deltaresponse.output_audio_transcript.doneresponse.output_text.deltaresponse.output_text.doneresponse.content_part.doneresponse.output_item.doneresponse.donerate_limits.updated|
 
 ### Streaming audio input to the server
 
@@ -319,10 +376,10 @@ files = [
 ]
 
 for filename in files:
-    data, samplerate = sf.read(filename, dtype='float32')  
+    data, samplerate = sf.read(filename, dtype='float32')
     channel_data = data[:, 0] if data.ndim > 1 else data
     base64_chunk = base64_encode_audio(channel_data)
-    
+
     # Send the client event
     event = {
         "type": "input_audio_buffer.append",
@@ -382,16 +439,16 @@ ws.send(json.dumps(event))
 
 **To play output audio back on a client device like a web browser, we recommend using WebRTC rather than WebSockets**. WebRTC will be more robust sending media to client devices over uncertain network conditions.
 
-But to work with audio output in server-to-server applications using a WebSocket, you will need to listen for [`response.audio.delta`](/docs/api-reference/realtime-server-events/response/audio/delta) events containing the Base64-encoded chunks of audio data from the model. You will either need to buffer these chunks and write them out to a file, or maybe immediately stream them to another source like [a phone call with Twilio](https://www.twilio.com/en-us/blog/twilio-openai-realtime-api-launch-integration).
+But to work with audio output in server-to-server applications using a WebSocket, you will need to listen for [`response.output_audio.delta`](/docs/api-reference/realtime-server-events/response/output_audio/delta) events containing the Base64-encoded chunks of audio data from the model. You will either need to buffer these chunks and write them out to a file, or maybe immediately stream them to another source like [a phone call with Twilio](https://www.twilio.com/en-us/blog/twilio-openai-realtime-api-launch-integration).
 
-Note that the [`response.audio.done`](/docs/api-reference/realtime-server-events/response/audio/done) and [`response.done`](/docs/api-reference/realtime-server-events/response/done) events won't actually contain audio data in them - just audio content transcriptions. To get the actual bytes, you'll need to listen for the [`response.audio.delta`](/docs/api-reference/realtime-server-events/response/audio/delta) events.
+Note that the [`response.output_audio.done`](/docs/api-reference/realtime-server-events/response/output_audio/done) and [`response.done`](/docs/api-reference/realtime-server-events/response/done) events won't actually contain audio data in them - just audio content transcriptions. To get the actual bytes, you'll need to listen for the [`response.output_audio.delta`](/docs/api-reference/realtime-server-events/response/output_audio/delta) events.
 
 The format of the output chunks can be configured either for the entire session, or per response.
 
-*   Session: `session.output_audio_format` in [`session.update`](/docs/api-reference/realtime-client-events/session/update)
-*   Response: `response.output_audio_format` in [`response.create`](/docs/api-reference/realtime-client-events/response/create)
+*   Session: `session.audio.output.format` in [`session.update`](/docs/api-reference/realtime-client-events/session/update)
+*   Response: `response.audio.output.format` in [`response.create`](/docs/api-reference/realtime-client-events/response/create)
 
-Listen for response.audio.delta events
+Listen for response.output\_audio.delta events
 
 ```javascript
 function handleEvent(e) {
@@ -463,9 +520,9 @@ const event = {
 
     // Set metadata to help identify responses sent back from the model
     metadata: { topic: "classification" },
-    
+
     // Set any other available response fields
-    modalities: [ "text" ],
+    output_modalities: [ "text" ],
     instructions: prompt,
   },
 };
@@ -491,7 +548,7 @@ event = {
         "metadata": { "topic": "classification" },
 
         # Set any other available response fields
-        "modalities": [ "text" ],
+        "output_modalities": [ "text" ],
         "instructions": prompt,
     },
 }
@@ -532,7 +589,7 @@ def on_message(ws, message):
         topic = server_event.response.metadata.topic
     except AttributeError:
         print("topic not set")
-    
+
     if server_event.type == "response.done" and topic == "classification":
         # this server event pertained to our OOB model response
         print(server_event.response.output[0])
@@ -550,7 +607,7 @@ const event = {
   response: {
     conversation: "none",
     metadata: { topic: "pizza" },
-    modalities: [ "text" ],
+    output_modalities: [ "text" ],
 
     // Create a custom input array for this request with whatever context
     // is appropriate
@@ -584,9 +641,9 @@ event = {
     "response": {
         "conversation": "none",
         "metadata": { "topic": "pizza" },
-        "modalities": [ "text" ],
+        "output_modalities": [ "text" ],
 
-        # Create a custom input array for this request with whatever 
+        # Create a custom input array for this request with whatever
         # context is appropriate
         "input": [
             # potentially include existing conversation items:
@@ -622,7 +679,7 @@ Insert no-context model responses into the default conversation
 ```javascript
 const prompt = `
 Say exactly the following:
-I'm a little teapot, short and stout! 
+I'm a little teapot, short and stout!
 This is my handle, this is my spout!
 `;
 
@@ -642,7 +699,7 @@ dataChannel.send(JSON.stringify(event));
 ```python
 prompt = """
 Say exactly the following:
-I'm a little teapot, short and stout! 
+I'm a little teapot, short and stout!
 This is my handle, this is my spout!
 """
 
@@ -683,41 +740,41 @@ Here's an example client event payload for a `session.update` that configures a 
 
 ```json
 {
-  "type": "session.update",
-  "session": {
-    "tools": [
-      {
-        "type": "function",
-        "name": "generate_horoscope",
-        "description": "Give today's horoscope for an astrological sign.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "sign": {
-              "type": "string",
-              "description": "The sign for the horoscope.",
-              "enum": [
-                "Aries",
-                "Taurus",
-                "Gemini",
-                "Cancer",
-                "Leo",
-                "Virgo",
-                "Libra",
-                "Scorpio",
-                "Sagittarius",
-                "Capricorn",
-                "Aquarius",
-                "Pisces"
-              ]
+    "type": "session.update",
+    "session": {
+        "tools": [
+            {
+                "type": "function",
+                "name": "generate_horoscope",
+                "description": "Give today's horoscope for an astrological sign.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "sign": {
+                            "type": "string",
+                            "description": "The sign for the horoscope.",
+                            "enum": [
+                                "Aries",
+                                "Taurus",
+                                "Gemini",
+                                "Cancer",
+                                "Leo",
+                                "Virgo",
+                                "Libra",
+                                "Scorpio",
+                                "Sagittarius",
+                                "Capricorn",
+                                "Aquarius",
+                                "Pisces"
+                            ]
+                        }
+                    },
+                    "required": ["sign"]
+                }
             }
-          },
-          "required": ["sign"]
-        }
-      }
-    ],
-    "tool_choice": "auto",
-  }
+        ],
+        "tool_choice": "auto"
+    }
 }
 ```
 
@@ -731,17 +788,17 @@ Based on inputs to the model, the model may decide to call a function in order t
 
 ```json
 {
-  "type": "conversation.item.create",
-  "item": {
-    "type": "message",
-    "role": "user",
-    "content": [
-      {
-        "type": "input_text",
-        "text": "What is my horoscope? I am an aquarius."
-      }
-    ]
-  }
+    "type": "conversation.item.create",
+    "item": {
+        "type": "message",
+        "role": "user",
+        "content": [
+            {
+                "type": "input_text",
+                "text": "What is my horoscope? I am an aquarius."
+            }
+        ]
+    }
 }
 ```
 
@@ -751,7 +808,7 @@ Followed by a client event to generate a response:
 
 ```json
 {
-  "type": "response.create"
+    "type": "response.create"
 }
 ```
 
@@ -761,41 +818,41 @@ Instead of immediately returning a text or audio response, the model will instea
 
 ```json
 {
-  "type": "response.done",
-  "event_id": "event_AeqLA8iR6FK20L4XZs2P6",
-  "response": {
-    "object": "realtime.response",
-    "id": "resp_AeqL8XwMUOri9OhcQJIu9",
-    "status": "completed",
-    "status_details": null,
-    "output": [
-      {
-        "object": "realtime.item",
-        "id": "item_AeqL8gmRWDn9bIsUM2T35",
-        "type": "function_call",
+    "type": "response.done",
+    "event_id": "event_AeqLA8iR6FK20L4XZs2P6",
+    "response": {
+        "object": "realtime.response",
+        "id": "resp_AeqL8XwMUOri9OhcQJIu9",
         "status": "completed",
-        "name": "generate_horoscope",
-        "call_id": "call_sHlR7iaFwQ2YQOqm",
-        "arguments": "{\"sign\":\"Aquarius\"}"
-      }
-    ],
-    "usage": {
-      "total_tokens": 541,
-      "input_tokens": 521,
-      "output_tokens": 20,
-      "input_token_details": {
-        "text_tokens": 292,
-        "audio_tokens": 229,
-        "cached_tokens": 0,
-        "cached_tokens_details": { "text_tokens": 0, "audio_tokens": 0 }
-      },
-      "output_token_details": {
-        "text_tokens": 20,
-        "audio_tokens": 0
-      }
-    },
-    "metadata": null
-  }
+        "status_details": null,
+        "output": [
+            {
+                "object": "realtime.item",
+                "id": "item_AeqL8gmRWDn9bIsUM2T35",
+                "type": "function_call",
+                "status": "completed",
+                "name": "generate_horoscope",
+                "call_id": "call_sHlR7iaFwQ2YQOqm",
+                "arguments": "{\"sign\":\"Aquarius\"}"
+            }
+        ],
+        "usage": {
+            "total_tokens": 541,
+            "input_tokens": 521,
+            "output_tokens": 20,
+            "input_token_details": {
+                "text_tokens": 292,
+                "audio_tokens": 229,
+                "cached_tokens": 0,
+                "cached_tokens_details": { "text_tokens": 0, "audio_tokens": 0 }
+            },
+            "output_token_details": {
+                "text_tokens": 20,
+                "audio_tokens": 0
+            }
+        },
+        "metadata": null
+    }
 }
 ```
 
@@ -820,12 +877,12 @@ Once you are ready to give the model the results of your custom code, you can cr
 
 ```json
 {
-  "type": "conversation.item.create",
-  "item": {
-    "type": "function_call_output",
-    "call_id": "call_sHlR7iaFwQ2YQOqm",
-    "output": "{\"horoscope\": \"You will soon meet a new friend.\"}"
-  }
+    "type": "conversation.item.create",
+    "item": {
+        "type": "function_call_output",
+        "call_id": "call_sHlR7iaFwQ2YQOqm",
+        "output": "{\"horoscope\": \"You will soon meet a new friend.\"}"
+    }
 }
 ```
 
@@ -839,7 +896,7 @@ Once we have added the conversation item containing our function call results, w
 
 ```json
 {
-  "type": "response.create"
+    "type": "response.create"
 }
 ```
 
@@ -852,8 +909,8 @@ Unlike HTTP requests and responses, where a response is implicitly tied to a req
 
 ```javascript
 const event = {
-  event_id: "my_awesome_event",
-  type: "scooby.dooby.doo",
+    event_id: "my_awesome_event",
+    type: "scooby.dooby.doo",
 };
 
 dataChannel.send(JSON.stringify(event));
@@ -863,12 +920,10 @@ This unsuccessful event sent from the client will emit an error event like the f
 
 ```json
 {
-  "type": "invalid_request_error",
-  "code": "invalid_value",
-  "message": "Invalid value: 'scooby.dooby.doo' ...",
-  "param": "type",
-  "event_id": "my_awesome_event"
+    "type": "invalid_request_error",
+    "code": "invalid_value",
+    "message": "Invalid value: 'scooby.dooby.doo' ...",
+    "param": "type",
+    "event_id": "my_awesome_event"
 }
 ```
-
-Was this page useful?

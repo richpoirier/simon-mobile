@@ -1,11 +1,8 @@
 package com.simon.app.ui
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 data class VoiceSessionUiState(
     val isConnected: Boolean = false,
@@ -14,30 +11,19 @@ data class VoiceSessionUiState(
 )
 
 class VoiceSessionViewModel : ViewModel() {
-    
+
     private val _uiState = MutableStateFlow(VoiceSessionUiState())
-    val uiState: StateFlow<VoiceSessionUiState> = _uiState.asStateFlow()
-    
+    val uiState = _uiState.asStateFlow()
+
     fun setConnected(connected: Boolean) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                isConnected = connected,
-                errorMessage = null
-            )
-        }
+        _uiState.value = _uiState.value.copy(isConnected = connected)
     }
-    
+
     fun setUserSpeaking(speaking: Boolean) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                isUserSpeaking = speaking
-            )
-        }
+        _uiState.value = _uiState.value.copy(isUserSpeaking = speaking)
     }
-    
+
     fun setError(message: String) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(errorMessage = message)
-        }
+        _uiState.value = _uiState.value.copy(errorMessage = message)
     }
 }

@@ -6,7 +6,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -15,7 +16,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simon.app.ui.components.AudioVisualizer
-import com.simon.app.ui.theme.*
+import com.simon.app.ui.theme.DarkBackground
+import com.simon.app.ui.theme.MediumBackground
+import com.simon.app.ui.theme.WhiteAlpha70
 
 @Composable
 fun AudioVisualizerScreen(
@@ -30,35 +33,27 @@ fun AudioVisualizerScreen(
             .fillMaxSize()
             .background(
                 brush = Brush.radialGradient(
-                    colors = listOf(
-                        MediumBackground,
-                        DarkBackground,
-                        Color.Black
-                    ),
+                    colors = listOf(MediumBackground, DarkBackground, Color.Black),
                     radius = 800f
                 )
             )
     ) {
-        // Audio visualizer centered slightly above middle for better visual balance
         AudioVisualizer(
             isConnected = uiState.isConnected,
             isUserSpeaking = uiState.isUserSpeaking,
             modifier = Modifier
                 .align(Alignment.Center)
-                .offset(y = (-40).dp)  // Slightly above center for visual balance
+                .offset(y = (-40).dp)
                 .size(280.dp)
         )
 
-        // Elegant close button at bottom
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 60.dp)
                 .size(56.dp)
                 .clip(CircleShape)
-                .background(
-                    color = DarkBackground.copy(alpha = 0.6f)
-                )
+                .background(color = DarkBackground.copy(alpha = 0.6f))
         ) {
             IconButton(
                 onClick = onCloseClick,
@@ -73,7 +68,6 @@ fun AudioVisualizerScreen(
             }
         }
 
-        // Error message if any (moved higher to not conflict with close button)
         uiState.errorMessage?.let { error ->
             Card(
                 modifier = Modifier
