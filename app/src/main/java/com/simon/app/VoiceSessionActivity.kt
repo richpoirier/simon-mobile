@@ -67,15 +67,17 @@ class VoiceSessionActivity : ComponentActivity() {
                 audioManager = audioManager,
                 onSessionStarted = { viewModel.setConnected(true) },
                 onSessionError = { error ->
-                    viewModel.setError(error)
-                    Toast.makeText(this, "Error: $error", Toast.LENGTH_LONG).show()
-                    finish()
+                    runOnUiThread {
+                        viewModel.setError(error)
+                        Toast.makeText(this, "Error: $error", Toast.LENGTH_LONG).show()
+                        finish()
+                    }
                 },
                 onSpeechStarted = { viewModel.setUserSpeaking(true) },
                 onSpeechStopped = { viewModel.setUserSpeaking(false) },
                 onResponseStarted = { },
                 onResponseCompleted = { },
-                onSessionEnded = { finish() }
+                onSessionEnded = { runOnUiThread { finish() } }
             )
             peerConnectionFactory?.let { presenter.initialize(it) }
             
