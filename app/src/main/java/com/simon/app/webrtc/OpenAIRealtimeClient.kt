@@ -4,8 +4,6 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.*
 import okhttp3.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.webrtc.*
 import java.io.IOException
 import java.nio.ByteBuffer
@@ -14,9 +12,13 @@ class OpenAIRealtimeClient(
     private val apiKey: String,
     private val listener: Listener,
     private val peerConnectionFactory: PeerConnectionFactory,
-    private val baseUrl: String = "https://api.openai.com/v1/realtime",
+    private val baseUrl: String = "https://api.openai.com/v1/realtime/calls",
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val httpClient: OkHttpClient = OkHttpClient()
+    private val httpClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
 ) {
 
     interface Listener {
@@ -44,7 +46,10 @@ class OpenAIRealtimeClient(
     }
 
     private fun setupPeerConnection() {
-        val rtcConfig = PeerConnection.RTCConfiguration(emptyList()).apply {
+        val iceServers = listOf(
+            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()
+        )
+        val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
             bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
             rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
             tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.DISABLED
@@ -165,16 +170,23 @@ class OpenAIRealtimeClient(
 
     private suspend fun sendOfferToOpenAI(offer: SessionDescription) {
         withContext(ioDispatcher) {
+            val sessionConfigJson = gson.toJson(createSessionConfig())
+
+            val requestBody = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("sdp", offer.description)
+                .addFormDataPart("session", sessionConfigJson)
+                .build()
+
             val request = Request.Builder()
-                .url("$baseUrl?model=gpt-4o-realtime-preview-2025-06-03")
-                .post(offer.description.toRequestBody("application/sdp".toMediaType()))
+                .url(baseUrl)
+                .post(requestBody)
                 .addHeader("Authorization", "Bearer $apiKey")
                 .build()
 
             val response = try {
                 httpClient.newCall(request).execute()
             } catch (e: IOException) {
-                android.util.Log.e("OpenAIRealtimeClient", "Network error", e)
                 listener.onError("Network error: ${e.message}")
                 return@withContext
             }
@@ -183,7 +195,6 @@ class OpenAIRealtimeClient(
                 val responseBody = try {
                     response.body.string()
                 } catch (e: IOException) {
-                    android.util.Log.e("OpenAIRealtimeClient", "Error reading response", e)
                     listener.onError("Error reading response: ${e.message}")
                     return@withContext
                 }
@@ -201,41 +212,35 @@ class OpenAIRealtimeClient(
                     }
 
                     override fun onSetFailure(error: String) {
-                        android.util.Log.e("OpenAIRealtimeClient", "Failed to set remote description: $error")
                         scope.launch(ioDispatcher) {
                             listener.onError(error)
                         }
                     }
                 }, answer)
             } else {
-                val errorBody = try {
-                    response.body.string()
-                } catch (_: IOException) {
-                    "Unable to read error response"
-                }
-                android.util.Log.e("OpenAIRealtimeClient", "HTTP error ${response.code}: $errorBody")
-                listener.onError("HTTP ${response.code}")
+                val errorBody = response.body.string()
+                listener.onError("HTTP ${response.code}: $errorBody")
             }
+        }
+    }
+
+    private fun createSessionConfig(): JsonObject {
+        return JsonObject().apply {
+            addProperty("type", "realtime")
+            addProperty("model", "gpt-realtime")
+            addProperty("instructions", getPersonalityInstructions())
+            add("audio", JsonObject().apply {
+                add("output", JsonObject().apply {
+                    addProperty("voice", "ballad")
+                })
+            })
         }
     }
 
     private fun sendSessionUpdate() {
         val sessionUpdate = JsonObject().apply {
             addProperty("type", "session.update")
-            add("session", JsonObject().apply {
-                addProperty("model", "gpt-realtime")
-                addProperty("voice", "ballad")
-                addProperty("instructions", getPersonalityInstructions())
-                addProperty("input_audio_format", "pcm16")
-                addProperty("output_audio_format", "pcm16")
-                add("turn_detection", JsonObject().apply {
-                    addProperty("type", "semantic_vad")
-                    addProperty("eagerness", "medium")
-                    addProperty("create_response", true)
-                    addProperty("interrupt_response", true)
-                })
-                add("modalities", gson.toJsonTree(listOf("audio", "text")))
-            })
+            add("session", createSessionConfig())
         }
 
         sendDataChannelMessage(gson.toJson(sessionUpdate))
@@ -288,8 +293,7 @@ class OpenAIRealtimeClient(
     private fun handleServerEvent(message: String) {
         val event = try {
             gson.fromJson(message, JsonObject::class.java)
-        } catch (e: com.google.gson.JsonSyntaxException) {
-            android.util.Log.e("OpenAIRealtimeClient", "Invalid JSON from server: $message", e)
+        } catch (_: com.google.gson.JsonSyntaxException) {
             return
         }
 
@@ -303,8 +307,6 @@ class OpenAIRealtimeClient(
                 "response.done" -> listener.onResponseCompleted()
                 "error" -> {
                     val errorMessage = event.get("message")?.asString ?: "Unknown error"
-                    val errorCode = event.get("code")?.asString ?: "no_code"
-                    android.util.Log.e("OpenAIRealtimeClient", "Server error - Code: $errorCode, Message: $errorMessage, Full event: $event")
                     listener.onError(errorMessage)
                 }
             }

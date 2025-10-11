@@ -50,10 +50,6 @@ class OpenAIRealtimeClientIntegrationTest {
     @Mock
     private lateinit var mockRemoteAudioTrack: MediaStreamTrack
     @Captor
-    private lateinit var sdpObserverCaptor: ArgumentCaptor<SdpObserver>
-    @Captor
-    private lateinit var setLocalDescriptionObserverCaptor: ArgumentCaptor<SdpObserver>
-    @Captor
     private lateinit var peerConnectionObserverCaptor: ArgumentCaptor<PeerConnection.Observer>
     @Captor
     private lateinit var dataChannelObserverCaptor: ArgumentCaptor<DataChannel.Observer>
@@ -84,15 +80,23 @@ class OpenAIRealtimeClientIntegrationTest {
         `when`(mockPeerConnection.addTrack(any(MediaStreamTrack::class.java), any()))
             .thenReturn(mock(RtpSender::class.java))
 
-        // Mock createOffer to capture the observer
-        doAnswer { invocation ->
-            null
-        }.`when`(mockPeerConnection).createOffer(sdpObserverCaptor.capture(), any(MediaConstraints::class.java))
+        // Mock connectionState to avoid timeout - return CONNECTED immediately
+        `when`(mockPeerConnection.connectionState())
+            .thenReturn(PeerConnection.PeerConnectionState.CONNECTED)
 
-        // Mock setLocalDescription to capture the observer
+        // Mock createOffer to immediately trigger callback
         doAnswer { invocation ->
+            val observer = invocation.getArgument<SdpObserver>(0)
+            observer.onCreateSuccess(SessionDescription(SessionDescription.Type.OFFER, "dummy-offer-sdp"))
             null
-        }.`when`(mockPeerConnection).setLocalDescription(setLocalDescriptionObserverCaptor.capture(), any(SessionDescription::class.java))
+        }.`when`(mockPeerConnection).createOffer(any(SdpObserver::class.java), any(MediaConstraints::class.java))
+
+        // Mock setLocalDescription to immediately trigger callback
+        doAnswer { invocation ->
+            val observer = invocation.getArgument<SdpObserver>(0)
+            observer.onSetSuccess()
+            null
+        }.`when`(mockPeerConnection).setLocalDescription(any(SdpObserver::class.java), any(SessionDescription::class.java))
 
         // Mock setRemoteDescription to call onSetSuccess
         doAnswer { invocation ->
@@ -136,31 +140,13 @@ class OpenAIRealtimeClientIntegrationTest {
         // Act
         client.connect()
         testScheduler.advanceUntilIdle()
-        
-        // Verify createOffer was called
-        verify(mockPeerConnection).createOffer(any(SdpObserver::class.java), any(MediaConstraints::class.java))
-        
-        // Now trigger the WebRTC callbacks in the correct order
-        // 1. createOffer callback - only if it was captured
-        if (sdpObserverCaptor.allValues.isNotEmpty()) {
-            sdpObserverCaptor.value.onCreateSuccess(SessionDescription(SessionDescription.Type.OFFER, "dummy-offer-sdp"))
-            
-            // Verify setLocalDescription was called
-            verify(mockPeerConnection).setLocalDescription(any(SdpObserver::class.java), any(SessionDescription::class.java))
-            
-            // 2. setLocalDescription callback - only if it was captured
-            if (setLocalDescriptionObserverCaptor.allValues.isNotEmpty()) {
-                setLocalDescriptionObserverCaptor.value.onSetSuccess()
-            }
-        }
-        
-        // Let the coroutines run
-        testScheduler.advanceUntilIdle()
 
         // Assert
         val recordedRequest = server.takeRequest(1, java.util.concurrent.TimeUnit.SECONDS)
         assertNotNull("No request was made to the server", recordedRequest)
         assertEquals("POST", recordedRequest?.method)
+        assertEquals("/", recordedRequest?.path)
+        assert(recordedRequest?.getHeader("Content-Type")?.startsWith("multipart/form-data") == true)
         verify(mockPeerConnection).setLocalDescription(any(SdpObserver::class.java), any(SessionDescription::class.java))
         verify(mockPeerConnection).setRemoteDescription(any(SdpObserver::class.java), any(SessionDescription::class.java))
         
@@ -179,7 +165,18 @@ class OpenAIRealtimeClientIntegrationTest {
         val jsonObject = Gson().fromJson(sentJson, JsonObject::class.java)
 
         assertEquals("session.update", jsonObject.get("type").asString)
-        assertEquals("semantic_vad", jsonObject.getAsJsonObject("session").getAsJsonObject("turn_detection").get("type").asString)
+        val session = jsonObject.getAsJsonObject("session")
+        assertEquals("realtime", session.get("type").asString)
+        assertEquals("gpt-realtime", session.get("model").asString)
+
+        val audio = session.getAsJsonObject("audio")
+        assertNotNull("audio object should exist", audio)
+
+        val output = audio.getAsJsonObject("output")
+        assertNotNull("output object should exist", output)
+        assertNotNull("voice should be set", output.get("voice"))
+
+        assertNotNull("instructions should be set", session.get("instructions"))
     }
 
     @Test
@@ -189,24 +186,6 @@ class OpenAIRealtimeClientIntegrationTest {
 
         // Act
         client.connect()
-        testScheduler.advanceUntilIdle()
-        
-        // Trigger WebRTC callbacks to make HTTP request happen
-        verify(mockPeerConnection).createOffer(any(SdpObserver::class.java), any(MediaConstraints::class.java))
-        
-        // The sdpObserverCaptor should have captured the observer
-        if (sdpObserverCaptor.allValues.isNotEmpty()) {
-            sdpObserverCaptor.value.onCreateSuccess(SessionDescription(SessionDescription.Type.OFFER, "dummy-offer-sdp"))
-            
-            verify(mockPeerConnection).setLocalDescription(any(SdpObserver::class.java), any(SessionDescription::class.java))
-            
-            // The setLocalDescriptionObserverCaptor should have captured the observer
-            if (setLocalDescriptionObserverCaptor.allValues.isNotEmpty()) {
-                setLocalDescriptionObserverCaptor.value.onSetSuccess()
-            }
-        }
-        
-        // Let the coroutines run
         testScheduler.advanceUntilIdle()
 
         // Assert
@@ -352,21 +331,6 @@ class OpenAIRealtimeClientIntegrationTest {
         
         // Act
         client.connect()
-        testScheduler.advanceUntilIdle()
-        
-        // Trigger WebRTC callbacks to make HTTP request happen
-        verify(mockPeerConnection).createOffer(any(SdpObserver::class.java), any(MediaConstraints::class.java))
-        
-        if (sdpObserverCaptor.allValues.isNotEmpty()) {
-            sdpObserverCaptor.value.onCreateSuccess(SessionDescription(SessionDescription.Type.OFFER, "dummy-offer-sdp"))
-            
-            verify(mockPeerConnection).setLocalDescription(any(SdpObserver::class.java), any(SessionDescription::class.java))
-            
-            if (setLocalDescriptionObserverCaptor.allValues.isNotEmpty()) {
-                setLocalDescriptionObserverCaptor.value.onSetSuccess()
-            }
-        }
-        
         testScheduler.advanceUntilIdle()
         
         // Assert
