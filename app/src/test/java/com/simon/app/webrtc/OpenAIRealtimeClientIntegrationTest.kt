@@ -1,5 +1,7 @@
 package com.simon.app.webrtc
 
+import android.content.Context
+import android.content.res.AssetManager
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +33,10 @@ class OpenAIRealtimeClientIntegrationTest {
     private val testScheduler = TestCoroutineScheduler()
     private val testDispatcher = StandardTestDispatcher(testScheduler)
 
+    @Mock
+    private lateinit var mockContext: Context
+    @Mock
+    private lateinit var mockAssetManager: AssetManager
     @Mock
     private lateinit var mockListener: OpenAIRealtimeClient.Listener
     @Mock
@@ -66,6 +72,13 @@ class OpenAIRealtimeClientIntegrationTest {
         Dispatchers.setMain(testDispatcher)
         server = MockWebServer()
         server.start()
+
+        // Setup mock context - by default prompt file returns a simple prompt
+        `when`(mockContext.assets).thenReturn(mockAssetManager)
+        // Default prompt for tests that don't specifically test prompt loading
+        `when`(mockAssetManager.open("simon_prompt.md")).thenAnswer {
+            java.io.ByteArrayInputStream("# Test Prompt".toByteArray())
+        }
 
         // Setup PeerConnectionFactory mock to capture the observer
         `when`(mockPeerConnectionFactory.createPeerConnection(any(PeerConnection.RTCConfiguration::class.java), peerConnectionObserverCaptor.capture()))
@@ -109,6 +122,7 @@ class OpenAIRealtimeClientIntegrationTest {
         httpClient = OkHttpClient.Builder().build()
 
         client = OpenAIRealtimeClient(
+            context = mockContext,
             apiKey = "test-api-key",
             listener = mockListener,
             peerConnectionFactory = mockPeerConnectionFactory,
@@ -125,8 +139,9 @@ class OpenAIRealtimeClientIntegrationTest {
     }
 
     @Test
-    fun `connect successfully completes handshake and sends session update`() = runTest(testScheduler) {
+    fun `connect successfully completes handshake and sends session update with valid prompt`() = runTest(testScheduler) {
         // Arrange
+        // Use default prompt setup from setup()
         val sdpAnswer = """
             v=0
             o=- 4596397390883466779 2 IN IP4 127.0.0.1
@@ -169,12 +184,37 @@ class OpenAIRealtimeClientIntegrationTest {
         assertEquals("realtime", session.get("type").asString)
         assertEquals("gpt-realtime", session.get("model").asString)
 
+        // Verify output_modalities
+        val outputModalities = session.getAsJsonArray("output_modalities")
+        assertNotNull("output_modalities should exist", outputModalities)
+        assertEquals(1, outputModalities.size())
+        assertEquals("audio", outputModalities.get(0).asString)
+
         val audio = session.getAsJsonObject("audio")
         assertNotNull("audio object should exist", audio)
 
+        // Verify audio.input configuration
+        val input = audio.getAsJsonObject("input")
+        assertNotNull("audio.input should exist", input)
+
+        val inputFormat = input.getAsJsonObject("format")
+        assertNotNull("audio.input.format should exist", inputFormat)
+        assertEquals("audio/pcm", inputFormat.get("type").asString)
+        assertEquals(24000, inputFormat.get("rate").asInt)
+
+        val turnDetection = input.getAsJsonObject("turn_detection")
+        assertNotNull("audio.input.turn_detection should exist", turnDetection)
+        assertEquals("semantic_vad", turnDetection.get("type").asString)
+        assertEquals(true, turnDetection.get("create_response").asBoolean)
+        assertEquals(true, turnDetection.get("interrupt_response").asBoolean)
+
+        // Verify audio.output configuration
         val output = audio.getAsJsonObject("output")
         assertNotNull("output object should exist", output)
+
+        // Note: audio.output.format should NOT be present - it causes crashes!
         assertNotNull("voice should be set", output.get("voice"))
+        assertEquals("ballad", output.get("voice").asString)
 
         assertNotNull("instructions should be set", session.get("instructions"))
     }
@@ -182,6 +222,7 @@ class OpenAIRealtimeClientIntegrationTest {
     @Test
     fun connect_whenHttpFails_callsOnError() = runTest(testScheduler) {
         // Arrange
+        // This test doesn't open the data channel, so no prompt is needed
         server.enqueue(MockResponse().setResponseCode(500).setBody("Internal Server Error"))
 
         // Act

@@ -1,5 +1,6 @@
 package com.simon.app.presentation
 
+import android.content.Context
 import android.media.AudioManager
 import com.simon.app.config.ConfigManager
 import com.simon.app.webrtc.OpenAIRealtimeClient
@@ -11,6 +12,7 @@ import kotlinx.coroutines.launch
 import org.webrtc.PeerConnectionFactory
 
 class VoiceSessionPresenter(
+    private val context: Context,
     private val configManager: ConfigManager,
     private val audioManager: AudioManager?,
     private val onSessionStarted: () -> Unit = {},
@@ -38,6 +40,7 @@ class VoiceSessionPresenter(
         }
         
         openAIClient = OpenAIRealtimeClient(
+            context = context,
             apiKey = apiKey,
             listener = createClientListener(),
             peerConnectionFactory = peerConnectionFactory

@@ -1,5 +1,6 @@
 package com.simon.app.presentation
 
+import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import com.simon.app.config.ConfigManager
@@ -24,14 +25,17 @@ import org.webrtc.PeerConnectionFactory
 class VoiceSessionPresenterTest {
 
     @Mock
+    private lateinit var mockContext: Context
+
+    @Mock
     private lateinit var mockConfigManager: ConfigManager
-    
+
     @Mock
     private lateinit var mockAudioManager: AudioManager
-    
+
     @Mock
     private lateinit var mockAudioDevice: AudioDeviceInfo
-    
+
     @Mock
     private lateinit var mockPeerConnectionFactory: PeerConnectionFactory
     
@@ -66,6 +70,7 @@ class VoiceSessionPresenterTest {
         sessionEndedCalled = false
         
         presenter = VoiceSessionPresenter(
+            context = mockContext,
             configManager = mockConfigManager,
             audioManager = mockAudioManager,
             onSessionStarted = { sessionStartedCalled = true },
@@ -115,6 +120,7 @@ class VoiceSessionPresenterTest {
     fun `initialize with null AudioManager still works`() {
         // Arrange
         presenter = VoiceSessionPresenter(
+            context = mockContext,
             configManager = mockConfigManager,
             audioManager = null
         )

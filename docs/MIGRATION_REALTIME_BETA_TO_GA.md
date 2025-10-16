@@ -63,9 +63,6 @@ val baseUrl = "https://api.openai.com/v1/realtime/calls"
         }
       },
       "output": {
-        "format": {
-          "type": "audio/pcm"
-        },
         "voice": "ballad"
       }
     },
@@ -74,12 +71,14 @@ val baseUrl = "https://api.openai.com/v1/realtime/calls"
 }
 ```
 
+**⚠️ IMPORTANT DISCOVERY:** Despite what might be expected, `audio.output.format` should NOT be included in the session config. The official OpenAI docs examples only show `audio.output.voice`. Including `audio.output.format` causes the app to crash with connection failures.
+
 **Key Changes:**
 - ✅ Add `type: "realtime"` field (required)
 - ✅ `modalities` → `output_modalities`
 - ✅ `voice` → `audio.output.voice`
 - ✅ `input_audio_format: "pcm16"` → `audio.input.format: {type: "audio/pcm", rate: 24000}`
-- ✅ `output_audio_format: "pcm16"` → `audio.output.format: {type: "audio/pcm"}`
+- ❌ ~~`output_audio_format: "pcm16"` → `audio.output.format: {type: "audio/pcm"}`~~ **DO NOT USE - causes crashes!**
 - ✅ `turn_detection` → `audio.input.turn_detection`
 - ⚠️ `eagerness` property moved inside turn_detection (check if still supported)
 
@@ -185,6 +184,35 @@ Proactively assist, manage, and support all aspects of the user's life.
 
 ---
 
+## Working GA Configuration (Tested & Verified)
+
+After extensive testing, here's the **exact** session configuration that works:
+
+```json
+{
+  "type": "realtime",
+  "model": "gpt-realtime",
+  "output_modalities": ["audio"],
+  "audio": {
+    "input": {
+      "format": {
+        "type": "audio/pcm",
+        "rate": 24000
+      },
+      "turn_detection": {
+        "type": "semantic_vad",
+        "create_response": true,
+        "interrupt_response": true
+      }
+    },
+    "output": {
+      "voice": "ballad"
+    }
+  },
+  "instructions": "..."
+}
+```
+
 ## Notes
 
 **What doesn't need changing:**
@@ -192,6 +220,10 @@ Proactively assist, manage, and support all aspects of the user's life.
 - ✅ WebRTC setup flow stays the same
 - ✅ Audio is still handled via WebRTC tracks (not events)
 - ✅ DataChannel usage unchanged
+
+**Critical Discovery:**
+- ❌ `audio.output.format` must NOT be included despite appearing logical - it causes connection failures
+- ✅ Only `audio.output.voice` should be specified for output configuration
 
 **Security:**
 - We use standard API key directly (not ephemeral) because this is a mobile app with user's own key

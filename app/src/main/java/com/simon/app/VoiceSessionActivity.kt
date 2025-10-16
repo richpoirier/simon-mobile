@@ -63,6 +63,7 @@ class VoiceSessionActivity : ComponentActivity() {
             val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
             
             presenter = VoiceSessionPresenter(
+                context = this,
                 configManager = configManager,
                 audioManager = audioManager,
                 onSessionStarted = { viewModel.setConnected(true) },
