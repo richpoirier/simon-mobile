@@ -245,6 +245,7 @@ class OpenAIRealtimeClient(
                     })
                     add("turn_detection", JsonObject().apply {
                         addProperty("type", "semantic_vad")
+                        addProperty("eagerness", "low")
                         addProperty("create_response", true)
                         addProperty("interrupt_response", true)
                     })
