@@ -1,6 +1,8 @@
 package com.simon.app
 
 import android.content.Intent
+import com.simon.app.framework.VoiceAssistantSession
+import com.simon.app.voice.VoiceSessionActivity
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith

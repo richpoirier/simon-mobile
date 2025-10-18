@@ -19,6 +19,7 @@ import com.simon.app.ui.components.AudioVisualizer
 import com.simon.app.ui.theme.DarkBackground
 import com.simon.app.ui.theme.MediumBackground
 import com.simon.app.ui.theme.WhiteAlpha70
+import com.simon.app.voice.VoiceSessionViewModel
 
 @Composable
 fun AudioVisualizerScreen(

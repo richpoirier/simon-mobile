@@ -1,6 +1,7 @@
 package com.simon.app
 
 import android.view.WindowManager
+import com.simon.app.voice.VoiceSessionActivity
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith

@@ -1,6 +1,8 @@
 package com.simon.app
 
 import android.os.Bundle
+import com.simon.app.framework.VoiceAssistantSession
+import com.simon.app.framework.VoiceAssistantSessionService
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test

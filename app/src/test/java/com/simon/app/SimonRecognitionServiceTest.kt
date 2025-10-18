@@ -3,6 +3,7 @@ package com.simon.app
 import android.content.Intent
 import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
+import com.simon.app.framework.SimonRecognitionService
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith

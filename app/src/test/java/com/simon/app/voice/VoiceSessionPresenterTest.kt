@@ -1,4 +1,4 @@
-package com.simon.app.presentation
+package com.simon.app.voice
 
 import android.content.Context
 import android.media.AudioDeviceInfo
