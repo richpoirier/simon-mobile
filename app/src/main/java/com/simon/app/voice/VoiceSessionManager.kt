@@ -15,7 +15,7 @@ import org.webrtc.PeerConnectionFactory
  * Manages the voice session lifecycle, bridging the UI with OpenAI's Realtime API client
  * and handling audio routing to speaker.
  */
-class VoiceSessionPresenter(
+class VoiceSessionManager(
     private val context: Context,
     private val configManager: ConfigManager,
     private val audioManager: AudioManager?,
@@ -33,10 +33,8 @@ class VoiceSessionPresenter(
     private var isListening = false
 
     fun initialize(peerConnectionFactory: PeerConnectionFactory) {
-        // Enable speaker
         enableSpeaker()
 
-        // Initialize WebRTC client with API key from config
         val apiKey = configManager.getOpenAIApiKey()
         if (apiKey.isEmpty()) {
             onSessionError("API key not configured")
@@ -91,13 +89,27 @@ class VoiceSessionPresenter(
     }
 
     private fun createClientListener() = object : OpenAIRealtimeClient.Listener {
-        override fun onSessionStarted() = this@VoiceSessionPresenter.onSessionStarted()
-        override fun onSessionEnded() = this@VoiceSessionPresenter.onSessionEnded()
-        override fun onSpeechStarted() = this@VoiceSessionPresenter.onSpeechStarted()
-        override fun onSpeechStopped() = this@VoiceSessionPresenter.onSpeechStopped()
-        override fun onResponseStarted() = this@VoiceSessionPresenter.onResponseStarted()
-        override fun onResponseCompleted() = this@VoiceSessionPresenter.onResponseCompleted()
-        override fun onError(error: String) = this@VoiceSessionPresenter.onSessionError(error)
+        override fun onSessionStarted() {
+            scope.launch { this@VoiceSessionManager.onSessionStarted() }
+        }
+        override fun onSessionEnded() {
+            scope.launch { this@VoiceSessionManager.onSessionEnded() }
+        }
+        override fun onSpeechStarted() {
+            scope.launch { this@VoiceSessionManager.onSpeechStarted() }
+        }
+        override fun onSpeechStopped() {
+            scope.launch { this@VoiceSessionManager.onSpeechStopped() }
+        }
+        override fun onResponseStarted() {
+            scope.launch { this@VoiceSessionManager.onResponseStarted() }
+        }
+        override fun onResponseCompleted() {
+            scope.launch { this@VoiceSessionManager.onResponseCompleted() }
+        }
+        override fun onError(error: String) {
+            scope.launch { this@VoiceSessionManager.onSessionError(error) }
+        }
     }
 
     fun isListening(): Boolean = isListening

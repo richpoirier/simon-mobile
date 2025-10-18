@@ -18,10 +18,13 @@ import org.webrtc.EglBase
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.audio.JavaAudioDeviceModule
 
+/**
+ * Full-screen voice interaction UI that manages WebRTC initialization and voice session lifecycle.
+ */
 class VoiceSessionActivity : ComponentActivity() {
 
     private val viewModel: VoiceSessionViewModel by viewModels()
-    private lateinit var presenter: VoiceSessionPresenter
+    private lateinit var manager: VoiceSessionManager
 
     private var peerConnectionFactory: PeerConnectionFactory? = null
     private var eglBase: EglBase? = null
@@ -29,13 +32,10 @@ class VoiceSessionActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Allow activity to show on lock screen and turn on the screen
         setShowWhenLocked(true)
         setTurnScreenOn(true)
-
-        (getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager).requestDismissKeyguard(this, null)
-
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        (getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager).requestDismissKeyguard(this, null)
 
         initializeServices()
 
@@ -46,9 +46,8 @@ class VoiceSessionActivity : ComponentActivity() {
                     onCloseClick = { finish() }
                 )
 
-                // Start voice session when ready
                 LaunchedEffect(Unit) {
-                    startVoiceSession()
+                    manager.startListening()
                 }
             }
         }
@@ -60,26 +59,21 @@ class VoiceSessionActivity : ComponentActivity() {
             val configManager = ConfigManager(this)
             val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
 
-            presenter = VoiceSessionPresenter(
+            manager = VoiceSessionManager(
                 context = this,
                 configManager = configManager,
                 audioManager = audioManager,
                 onSessionStarted = { viewModel.setConnected(true) },
                 onSessionError = { error ->
-                    runOnUiThread {
-                        viewModel.setError(error)
-                        Toast.makeText(this, "Error: $error", Toast.LENGTH_LONG).show()
-                        finish()
-                    }
+                    viewModel.setError(error)
+                    Toast.makeText(this, "Error: $error", Toast.LENGTH_LONG).show()
+                    finish()
                 },
                 onSpeechStarted = { viewModel.setUserSpeaking(true) },
                 onSpeechStopped = { viewModel.setUserSpeaking(false) },
-                onResponseStarted = { },
-                onResponseCompleted = { },
-                onSessionEnded = { runOnUiThread { finish() } }
+                onSessionEnded = { finish() }
             )
-            peerConnectionFactory?.let { presenter.initialize(it) }
-
+            peerConnectionFactory?.let { manager.initialize(it) }
         } catch (e: Exception) {
             Log.e("VoiceSessionActivity", "Error initializing services", e)
             Toast.makeText(this, "Failed to initialize: ${e.message}", Toast.LENGTH_LONG).show()
@@ -102,11 +96,6 @@ class VoiceSessionActivity : ComponentActivity() {
             .createPeerConnectionFactory()
     }
 
-    private fun startVoiceSession() {
-        viewModel.setConnected(false)
-        presenter.startListening()
-    }
-
     private fun hideSystemUI() {
         window.insetsController?.let {
             it.hide(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
@@ -123,7 +112,7 @@ class VoiceSessionActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        presenter.cleanup()
+        manager.cleanup()
         peerConnectionFactory?.dispose()
         eglBase?.release()
     }

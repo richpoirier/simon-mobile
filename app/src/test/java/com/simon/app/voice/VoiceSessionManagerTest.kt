@@ -22,7 +22,7 @@ import org.mockito.kotlin.whenever
 import org.webrtc.PeerConnectionFactory
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class VoiceSessionPresenterTest {
+class VoiceSessionManagerTest {
 
     @Mock
     private lateinit var mockContext: Context
@@ -39,7 +39,7 @@ class VoiceSessionPresenterTest {
     @Mock
     private lateinit var mockPeerConnectionFactory: PeerConnectionFactory
     
-    private lateinit var presenter: VoiceSessionPresenter
+    private lateinit var manager: VoiceSessionManager
     private val testDispatcher = StandardTestDispatcher()
     
     // Callback spies
@@ -69,7 +69,7 @@ class VoiceSessionPresenterTest {
         responseCompletedCalled = false
         sessionEndedCalled = false
         
-        presenter = VoiceSessionPresenter(
+        manager = VoiceSessionManager(
             context = mockContext,
             configManager = mockConfigManager,
             audioManager = mockAudioManager,
@@ -94,7 +94,7 @@ class VoiceSessionPresenterTest {
         whenever(mockConfigManager.getOpenAIApiKey()).thenReturn("test-api-key")
         
         // Act
-        presenter.initialize(mockPeerConnectionFactory)
+        manager.initialize(mockPeerConnectionFactory)
         
         // Assert
         verify(mockAudioManager).mode = AudioManager.MODE_IN_COMMUNICATION
@@ -108,7 +108,7 @@ class VoiceSessionPresenterTest {
         whenever(mockConfigManager.getOpenAIApiKey()).thenReturn("")
         
         // Act
-        presenter.initialize(mockPeerConnectionFactory)
+        manager.initialize(mockPeerConnectionFactory)
         
         // Assert
         assertEquals("API key not configured", sessionErrorMessage)
@@ -119,7 +119,7 @@ class VoiceSessionPresenterTest {
     @Test
     fun `initialize with null AudioManager still works`() {
         // Arrange
-        presenter = VoiceSessionPresenter(
+        manager = VoiceSessionManager(
             context = mockContext,
             configManager = mockConfigManager,
             audioManager = null
@@ -127,7 +127,7 @@ class VoiceSessionPresenterTest {
         whenever(mockConfigManager.getOpenAIApiKey()).thenReturn("test-api-key")
         
         // Act
-        presenter.initialize(mockPeerConnectionFactory)
+        manager.initialize(mockPeerConnectionFactory)
         
         // Assert
         // No crash should occur - AudioManager is optional
@@ -137,51 +137,51 @@ class VoiceSessionPresenterTest {
     fun `startListening when not already listening starts connection`() = runTest {
         // Arrange
         whenever(mockConfigManager.getOpenAIApiKey()).thenReturn("test-api-key")
-        presenter.initialize(mockPeerConnectionFactory)
+        manager.initialize(mockPeerConnectionFactory)
         
         // Act
-        presenter.startListening()
+        manager.startListening()
         
         // Assert
-        assertTrue("Should be listening", presenter.isListening())
+        assertTrue("Should be listening", manager.isListening())
     }
     
     @Test
     fun `startListening when already listening does nothing`() {
         // Arrange
         whenever(mockConfigManager.getOpenAIApiKey()).thenReturn("test-api-key")
-        presenter.initialize(mockPeerConnectionFactory)
-        presenter.startListening()
+        manager.initialize(mockPeerConnectionFactory)
+        manager.startListening()
         
         // Act
-        presenter.startListening() // Second call
+        manager.startListening() // Second call
         
         // Assert
-        assertTrue("Should still be listening", presenter.isListening())
+        assertTrue("Should still be listening", manager.isListening())
     }
     
     @Test
     fun `stopListening when listening disconnects and triggers callback`() {
         // Arrange
         whenever(mockConfigManager.getOpenAIApiKey()).thenReturn("test-api-key")
-        presenter.initialize(mockPeerConnectionFactory)
-        presenter.startListening()
+        manager.initialize(mockPeerConnectionFactory)
+        manager.startListening()
         
         // Act
-        presenter.stopListening()
+        manager.stopListening()
         
         // Assert
-        assertFalse("Should not be listening", presenter.isListening())
+        assertFalse("Should not be listening", manager.isListening())
         assertTrue("Session ended callback should be called", sessionEndedCalled)
     }
     
     @Test
     fun `stopListening when not listening does nothing`() {
         // Act
-        presenter.stopListening()
+        manager.stopListening()
         
         // Assert
-        assertFalse("Should not be listening", presenter.isListening())
+        assertFalse("Should not be listening", manager.isListening())
         assertFalse("Session ended callback should not be called", sessionEndedCalled)
     }
     
@@ -189,23 +189,23 @@ class VoiceSessionPresenterTest {
     fun `cleanup stops listening and resets audio`() {
         // Arrange
         whenever(mockConfigManager.getOpenAIApiKey()).thenReturn("test-api-key")
-        presenter.initialize(mockPeerConnectionFactory)
-        presenter.startListening()
+        manager.initialize(mockPeerConnectionFactory)
+        manager.startListening()
         
         // Act
-        presenter.cleanup()
+        manager.cleanup()
         
         // Assert
-        assertFalse("Should not be listening", presenter.isListening())
+        assertFalse("Should not be listening", manager.isListening())
         verify(mockAudioManager).mode = AudioManager.MODE_NORMAL
         verify(mockAudioManager).clearCommunicationDevice()
     }
     
     @Test
-    fun `client listener callbacks trigger presenter callbacks`() {
+    fun `client listener callbacks trigger manager callbacks`() {
         // Arrange
         whenever(mockConfigManager.getOpenAIApiKey()).thenReturn("test-api-key")
-        presenter.initialize(mockPeerConnectionFactory)
+        manager.initialize(mockPeerConnectionFactory)
         
         // We need to capture the listener passed to OpenAIRealtimeClient
         // Since we can't easily do that with the current structure,
@@ -219,16 +219,16 @@ class VoiceSessionPresenterTest {
     @Test
     fun `isListening returns correct state`() {
         // Initially not listening
-        assertFalse(presenter.isListening())
+        assertFalse(manager.isListening())
         
         // After starting
         whenever(mockConfigManager.getOpenAIApiKey()).thenReturn("test-api-key")
-        presenter.initialize(mockPeerConnectionFactory)
-        presenter.startListening()
-        assertTrue(presenter.isListening())
+        manager.initialize(mockPeerConnectionFactory)
+        manager.startListening()
+        assertTrue(manager.isListening())
         
         // After stopping
-        presenter.stopListening()
-        assertFalse(presenter.isListening())
+        manager.stopListening()
+        assertFalse(manager.isListening())
     }
 }
